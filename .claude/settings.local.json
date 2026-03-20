@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(start:*)",
+      "Bash(cat:*)",
+      "Bash(node:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run dev:*)",
+      "WebSearch",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "Bash(npm run build)",
+      "Bash(ls:*)",
+      "Bash(rm:*)",
+      "Bash(npx @dnd-kit/core@latest:*)",
+      "Bash(timeout:*)",
+      "Bash(npx supabase:*)",
+      "Bash(where:*)",
+      "Bash(curl:*)",
+      "Bash(uipro init:*)",
+      "Bash(npm config get:*)",
+      "Bash(cmd:*)",
+      "Bash(xcopy:*)",
+      "Bash(robocopy:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(python:*)",
+      "Bash(set:*)",
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}
