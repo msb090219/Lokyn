@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light Mode - Simple Clean Palette */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 7%;
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 7%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 7%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 5% 91%;
+    --input: 0 5% 91%;
+    --ring: 217 91% 60%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    /* Clean Dark Mode - Black/White with User Accent Color */
+    --background: 0 0% 7%;            /* Near black */
+    --foreground: 0 0% 98%;           /* Off-white text */
+    --card: 0 0% 10%;                 /* Very dark gray */
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 217 91% 60%;           /* Default blue accent (user customizable) */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 18%;
+    --muted-foreground: 0 0% 60%;
+    --accent: 0 0% 20%;               /* Dark gray tint */
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 20%;               /* Subtle gray border */
+    --input: 0 0% 20%;
+    --ring: 217 91% 60%;              /* Matches primary (user customizable) */
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* FullCalendar overrides to keep it clean */
+.fc {
+  font-family: inherit;
+}
+
+.fc-theme-standard td,
+.fc-theme-standard th {
+  border-color: hsl(var(--border));
+}
+
+.fc-col-header-cell,
+.fc-daygrid-day {
+  background-color: hsl(var(--card));
+}
+
+.fc-daygrid-day-number {
+  color: hsl(var(--foreground));
+  font-weight: 500;
+}
+
+.fc-day-today {
+  background-color: hsl(var(--accent)) !important;
+}
+
+.fc-event {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+/* Week view styling */
+.fc-timegrid-slot {
+  height: 48px;
+}
+
+.fc-timegrid-slot-label {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.fc-col-header-cell-cushion {
+  padding: 8px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.fc-timegrid-event {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: none !important;
+}
+
+.fc-timegrid-event:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+  transition: all 150ms ease;
+}
+
+.fc-timegrid-event-title {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fc-timegrid-event-time {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.fc-scrollgrid {
+  border-color: hsl(var(--border));
+}
+
+.fc-timegrid-axis {
+  width: 60px;
+}
+
+.fc-scrollgrid-section-liquid {
+  height: auto !important;
+}
+
+.fc-timegrid-body {
+  overflow-y: auto !important;
+}
+
+.fc-timegrid-slots {
+  overflow-y: visible !important;
+}
+
+/* FullCalendar dark mode overrides */
+.dark .fc {
+  color: hsl(var(--foreground));
+}
+
+.dark .fc-col-header-cell,
+.dark .fc-daygrid-day {
+  background-color: hsl(0 0% 12%);
+}
+
+.dark .fc-day-today {
+  background-color: hsl(0 0% 18%) !important;
+  border: 1px solid hsl(var(--primary) / 0.3);
+}
+
+.dark .fc-timegrid-event {
+  background: hsl(var(--primary));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.dark .fc-timegrid-event:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
