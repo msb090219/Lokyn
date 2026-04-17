@@ -370,12 +370,12 @@ export default function StatsPage() {
 
           {/* Quick Actions */}
           <div className="flex justify-center gap-4">
-            <Button size="lg" asChild className="gap-2">
-              <Link href="/focus">
+            <Link href="/focus">
+              <Button size="lg" className="gap-2">
                 <Timer className="h-5 w-5" />
                 Start Studying
-              </Link>
-            </Button>
+              </Button>
+            </Link>
           </div>
         </div>
       </main>
