@@ -82,6 +82,7 @@ export default function DashboardPage() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [forceOpenSectionId, setForceOpenSectionId] = useState<string | null>(null)
   const [showUserMenu, setShowUserMenu] = useState(false)
+  const [activeSessionTaskId, setActiveSessionTaskId] = useState<string | null>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const lastLocalUpdate = useRef<number>(0)
 
@@ -95,6 +96,31 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadUserData()
+  }, [])
+
+  // Load active session
+  useEffect(() => {
+    const loadActiveSession = async () => {
+      try {
+        const response = await fetch('/api/study-sessions/active')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.session && data.session.task_id) {
+            setActiveSessionTaskId(data.session.task_id)
+          } else {
+            setActiveSessionTaskId(null)
+          }
+        }
+      } catch (error) {
+        console.error('Error loading active session:', error)
+      }
+    }
+
+    loadActiveSession()
+
+    // Poll for active session changes every 10 seconds
+    const interval = setInterval(loadActiveSession, 10000)
+    return () => clearInterval(interval)
   }, [])
 
   // Close dropdown when clicking outside
@@ -634,6 +660,7 @@ export default function DashboardPage() {
                         setForceOpenSectionId(null)
                       }}
                       forceOpen={forceOpenSectionId === section.id}
+                      activeSessionTaskId={activeSessionTaskId}
                     />
                   ))}
                 </SortableContext>
@@ -676,6 +703,7 @@ export default function DashboardPage() {
                         setForceOpenSectionId(null)
                       }}
                       forceOpen={forceOpenSectionId === section.id}
+                      activeSessionTaskId={activeSessionTaskId}
                     />
                   ))}
                 </SortableContext>
@@ -742,6 +770,7 @@ function DraggableSection({
   editingTaskId,
   onClearEditingTask,
   forceOpen,
+  activeSessionTaskId,
 }: {
   section: SectionWithTasks
   onCreateTask: (sectionId: string) => Promise<void>
@@ -750,6 +779,7 @@ function DraggableSection({
   editingTaskId: string | null
   onClearEditingTask: () => void
   forceOpen: boolean
+  activeSessionTaskId: string | null
 }) {
   const {
     attributes,
@@ -989,6 +1019,7 @@ function SectionCard({
                 onUpdate={onUpdate}
                 editingTaskId={editingTaskId}
                 onClearEditingTask={onClearEditingTask}
+                activeSessionTaskId={activeSessionTaskId}
               />
             ))}
           </SortableContext>
@@ -1030,12 +1061,14 @@ function DraggableTask({
   onUpdate,
   editingTaskId,
   onClearEditingTask,
+  activeSessionTaskId,
 }: {
   task: TasksRow
   sectionId: string
   onUpdate: () => Promise<void>
   editingTaskId: string | null
   onClearEditingTask: () => void
+  activeSessionTaskId: string | null
 }) {
   const {
     attributes,
@@ -1061,6 +1094,7 @@ function DraggableTask({
         dragHandleListeners={listeners}
         editingTaskId={editingTaskId}
         onClearEditingTask={onClearEditingTask}
+        activeSessionTaskId={activeSessionTaskId}
       />
     </div>
   )
@@ -1073,6 +1107,7 @@ function TaskCard({
   dragHandleListeners,
   editingTaskId,
   onClearEditingTask,
+  activeSessionTaskId,
 }: {
   task: TasksRow
   sectionId: string
@@ -1080,6 +1115,7 @@ function TaskCard({
   dragHandleListeners?: React.HTMLAttributes<HTMLDivElement>
   editingTaskId: string | null
   onClearEditingTask: () => void
+  activeSessionTaskId: string | null
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [text, setText] = useState(task.text)
@@ -1161,7 +1197,11 @@ function TaskCard({
   }
 
   return (
-    <div className={`bg-card group flex items-center gap-3 rounded-lg border border-border p-3 transition-all hover:border-primary/50 ${displayCompleted ? 'opacity-60' : ''}`}>
+    <div className={`bg-card group flex items-center gap-3 rounded-lg border p-3 transition-all hover:border-primary/50 ${displayCompleted ? 'opacity-60' : ''} ${
+      activeSessionTaskId === task.id
+        ? 'border-primary shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] animate-pulse'
+        : 'border-border'
+    }`}>
       {/* Drag Handle */}
       <div
         {...dragHandleListeners}
