@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { toast } from 'sonner'
 import type { StreakData, TimeMetricsData, HeatmapDataPoint, StudySessionsRow } from '@/lib/types'
+import { AppHeader } from '@/components/app-header'
 
 interface StatsData {
   streak: StreakData
@@ -19,6 +20,7 @@ interface StatsData {
 export default function StatsPage() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
+  const [userProfile, setUserProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<StatsData | null>(null)
   const [sessions, setSessions] = useState<StudySessionsRow[]>([])
@@ -38,6 +40,17 @@ export default function StatsPage() {
         }
 
         setUser(authUser)
+
+        // Load user profile
+        const { data: profile } = await supabase
+          .from('user_preferences')
+          .select('*')
+          .eq('user_id', authUser.id)
+          .single()
+
+        if (profile) {
+          setUserProfile(profile)
+        }
 
         // Load stats
         const statsResponse = await fetch('/api/study-stats')
@@ -199,43 +212,7 @@ export default function StatsPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card">
-        <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <BarChart3 className="h-6 w-6 text-primary" />
-              <h1 className="text-xl font-bold">Statistics</h1>
-            </div>
-
-            <nav className="hidden md:flex items-center gap-1">
-              <Link href="/dashboard">
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <CheckCircle className="h-4 w-4" />
-                  Tasks
-                </Button>
-              </Link>
-              <Link href="/calendar">
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Calendar
-                </Button>
-              </Link>
-              <Link href="/focus">
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <Timer className="h-4 w-4" />
-                  Focus
-                </Button>
-              </Link>
-            </nav>
-
-            <Link href="/settings">
-              <Button variant="ghost" size="sm" aria-label="Settings">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+      <AppHeader activePage="stats" user={user} userProfile={userProfile} />
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">

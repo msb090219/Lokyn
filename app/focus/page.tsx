@@ -8,6 +8,7 @@ import { Play, Pause, RotateCcw, Calendar, Settings, CheckCircle, BarChart3, Tim
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { useTheme } from 'next-themes'
+import { AppHeader } from '@/components/app-header'
 
 interface StudySession {
   id: string
@@ -34,6 +35,7 @@ export default function FocusPage() {
   const router = useRouter()
   const { theme } = useTheme()
   const [user, setUser] = useState<any>(null)
+  const [userProfile, setUserProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   // Timer state
@@ -83,6 +85,17 @@ export default function FocusPage() {
         }
 
         setUser(authUser)
+
+        // Load user profile
+        const { data: profile } = await supabase
+          .from('user_preferences')
+          .select('*')
+          .eq('user_id', authUser.id)
+          .single()
+
+        if (profile) {
+          setUserProfile(profile)
+        }
 
         // Load user preferences for timer durations
         const { data: prefs } = await supabase
@@ -466,43 +479,7 @@ export default function FocusPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border bg-card">
-        <div className="container mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Timer className="h-6 w-6 text-primary" />
-              <h1 className="text-xl font-bold">Focus</h1>
-            </div>
-
-            <nav className="hidden md:flex items-center gap-1">
-              <Link href="/dashboard">
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <CheckCircle className="h-4 w-4" />
-                  Tasks
-                </Button>
-              </Link>
-              <Link href="/calendar">
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <Calendar className="h-4 w-4" />
-                  Calendar
-                </Button>
-              </Link>
-              <Link href="/stats">
-                <Button variant="ghost" size="sm" className="gap-2">
-                  <BarChart3 className="h-4 w-4" />
-                  Stats
-                </Button>
-              </Link>
-            </nav>
-
-            <Link href="/settings">
-              <Button variant="ghost" size="sm" aria-label="Settings">
-                <Settings className="h-4 w-4" />
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </header>
+      <AppHeader activePage="focus" user={user} userProfile={userProfile} />
 
       {/* Main Content */}
       <main className={`container mx-auto px-4 py-8 ${focusMode ? 'blur-sm transition-all duration-200' : ''}`}>
