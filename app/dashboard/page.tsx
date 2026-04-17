@@ -808,6 +808,7 @@ function DraggableSection({
         editingTaskId={editingTaskId}
         onClearEditingTask={onClearEditingTask}
         forceOpen={forceOpen}
+        activeSessionTaskId={activeSessionTaskId}
       />
     </div>
   )
@@ -823,6 +824,7 @@ function SectionCard({
   editingTaskId,
   onClearEditingTask,
   forceOpen,
+  activeSessionTaskId,
 }: {
   section: SectionWithTasks
   onCreateTask: (sectionId: string) => Promise<void>
@@ -833,6 +835,7 @@ function SectionCard({
   editingTaskId: string | null
   onClearEditingTask: () => void
   forceOpen: boolean
+  activeSessionTaskId: string | null
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [title, setTitle] = useState(section.title)
