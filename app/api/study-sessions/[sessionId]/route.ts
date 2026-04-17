@@ -5,7 +5,7 @@ import type { StudySessionsUpdate } from '@/lib/types'
 // GET - Fetch a single study session
 export async function GET(
   request: NextRequest,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
     const supabase = createClient()
@@ -15,10 +15,11 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { sessionId } = await params
     const { data, error } = await supabase
       .from('study_sessions')
       .select('*')
-      .eq('id', params.sessionId)
+      .eq('id', sessionId)
       .eq('user_id', user.id)
       .single()
 
@@ -47,7 +48,7 @@ export async function GET(
 // PATCH - Update a study session (e.g., complete it)
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
     const supabase = createClient()
@@ -57,13 +58,12 @@ export async function PATCH(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { sessionId } = await params
     const body = await request.json()
     const { title, completed_at } = body
 
     // Build update object with only provided fields
-    const updateData: StudySessionsUpdate = {
-      user_id: user.id, // Required for RLS
-    }
+    const updateData: StudySessionsUpdate = {}
 
     if (title !== undefined) updateData.title = title
     if (completed_at !== undefined) {
@@ -73,7 +73,7 @@ export async function PATCH(
     const { data, error } = await supabase
       .from('study_sessions')
       .update(updateData)
-      .eq('id', params.sessionId)
+      .eq('id', sessionId)
       .eq('user_id', user.id)
       .select()
       .single()
@@ -103,7 +103,7 @@ export async function PATCH(
 // DELETE - Delete a study session
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { sessionId: string } }
+  { params }: { params: Promise<{ sessionId: string }> }
 ) {
   try {
     const supabase = createClient()
@@ -113,10 +113,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { sessionId } = await params
     const { error } = await supabase
       .from('study_sessions')
       .delete()
-      .eq('id', params.sessionId)
+      .eq('id', sessionId)
       .eq('user_id', user.id)
 
     if (error) throw error

@@ -1,15 +1,18 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Calendar, Settings, CheckCircle, BarChart3, Timer, Flame, Clock, Target } from 'lucide-react'
+import { Timer, Clock, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { toast } from 'sonner'
 import type { StreakData, TimeMetricsData, HeatmapDataPoint, StudySessionsRow } from '@/lib/types'
 import { AppHeader } from '@/components/app-header'
+import { EngagementMetricsCard } from '@/components/engagement-metrics-card'
+import { TimeMetricsCard } from '@/components/time-metrics-card'
+import { StudyHeatmap } from '@/components/study-heatmap'
 
 interface StatsData {
   streak: StreakData
@@ -25,8 +28,6 @@ export default function StatsPage() {
   const [stats, setStats] = useState<StatsData | null>(null)
   const [sessions, setSessions] = useState<StudySessionsRow[]>([])
   const [heatmapData, setHeatmapData] = useState<HeatmapDataPoint[]>([])
-
-  const heatmapContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const loadData = async () => {
@@ -78,12 +79,11 @@ export default function StatsPage() {
   }, [])
 
   const getHeatmapColor = (minutes: number) => {
-    // Color scale: gray -> light blue -> medium blue -> dark blue -> navy
-    if (minutes === 0) return 'hsl(0 0% 15%)' // No sessions
-    if (minutes < 60) return 'hsl(var(--primary) / 0.25)' // 0-1 hours
-    if (minutes < 120) return 'hsl(var(--primary) / 0.5)' // 1-2 hours
-    if (minutes < 240) return 'hsl(var(--primary) / 0.75)' // 2-4 hours
-    return 'hsl(var(--primary) / 1.0)' // 4+ hours
+    if (minutes === 0) return 'hsl(0 0% 15%)'
+    if (minutes < 60) return 'hsl(var(--primary) / 0.25)'
+    if (minutes < 120) return 'hsl(var(--primary) / 0.5)'
+    if (minutes < 240) return 'hsl(var(--primary) / 0.75)'
+    return 'hsl(var(--primary) / 1.0)'
   }
 
   const formatMinutes = (minutes: number) => {
@@ -108,99 +108,6 @@ export default function StatsPage() {
     })
   }
 
-  const getStreakEmoji = (streak: number) => {
-    if (streak >= 30) return '🔥'
-    if (streak >= 14) return '⚡'
-    if (streak >= 7) return '✨'
-    if (streak >= 3) return '💪'
-    return '📚'
-  }
-
-  const renderHeatmap = () => {
-    // Generate last 365 days
-    const days: { date: Date; minutes: number; sessions: number }[] = []
-    const today = new Date()
-
-    for (let i = 364; i >= 0; i--) {
-      const date = new Date(today)
-      date.setDate(date.getDate() - i)
-      date.setHours(0, 0, 0, 0)
-
-      const dataPoint = heatmapData.find(d => {
-        const dDate = new Date(d.study_date)
-        dDate.setHours(0, 0, 0, 0)
-        return dDate.getTime() === date.getTime()
-      })
-
-      days.push({
-        date,
-        minutes: dataPoint?.total_minutes || 0,
-        sessions: dataPoint?.session_count || 0,
-      })
-    }
-
-    // Group by weeks for GitHub-style layout
-    const weeks: typeof days[] = []
-    let currentWeek: typeof days = []
-
-    days.forEach((day, index) => {
-      currentWeek.push(day)
-      if (currentWeek.length === 7 || index === days.length - 1) {
-        weeks.push([...currentWeek])
-        currentWeek = []
-      }
-    })
-
-    return (
-      <div className="bg-card rounded-lg border border-border p-6">
-        <h3 className="font-semibold mb-4 flex items-center gap-2">
-          <Target className="h-5 w-5 text-primary" />
-          Study Activity (Last 365 Days)
-        </h3>
-
-        <div
-          ref={heatmapContainerRef}
-          className="overflow-x-auto"
-        >
-          <div className="flex gap-1 min-w-max">
-            {weeks.map((week, weekIndex) => (
-              <div key={weekIndex} className="flex flex-col gap-1">
-                {week.map((day, dayIndex) => {
-                  const isToday = day.date.toDateString() === new Date().toDateString()
-                  return (
-                    <div
-                      key={`${weekIndex}-${dayIndex}`}
-                      className="w-3 h-3 rounded-sm transition-all hover:scale-125 cursor-pointer"
-                      style={{
-                        backgroundColor: getHeatmapColor(day.minutes),
-                        border: isToday ? '2px solid var(--primary)' : 'none',
-                      }}
-                      title={`${day.date.toLocaleDateString()}: ${formatMinutes(day.minutes)} (${day.sessions} sessions)`}
-                    />
-                  )
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 mt-4 text-xs text-muted-foreground">
-          <span>Less</span>
-          <div className="flex gap-1">
-            {[0, 0.25, 0.5, 0.75, 1].map(opacity => (
-              <div
-                key={opacity}
-                className="w-3 h-3 rounded-sm"
-                style={{ backgroundColor: `hsl(var(--primary) / ${opacity})` }}
-              />
-            ))}
-          </div>
-          <span>More</span>
-        </div>
-      </div>
-    )
-  }
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -211,87 +118,38 @@ export default function StatsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <AppHeader activePage="stats" user={user} userProfile={userProfile} />
 
-      {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
         <div className="max-w-6xl mx-auto space-y-6">
-          {/* Streak & Quick Stats */}
+          {/* CARD 1: Engagement Metrics (Streak + Overview + Totals) */}
           {stats && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Current Streak */}
-              <Card className="p-6">
-                <div className="flex items-center justify-between mb-2">
-                  <Flame className="h-8 w-8 text-orange-500" />
-                  <span className="text-4xl">{getStreakEmoji(stats.streak.current_streak)}</span>
-                </div>
-                <div className="text-3xl font-bold mb-1">{stats.streak.current_streak}</div>
-                <div className="text-sm text-muted-foreground">Day Streak</div>
-                {stats.streak.current_streak > 0 && stats.streak.last_study_date && (
-                  <div className="text-xs text-muted-foreground mt-2">
-                    Last studied: {formatDate(stats.streak.last_study_date)}
-                  </div>
-                )}
-              </Card>
-
-              {/* Best Streak */}
-              <Card className="p-6">
-                <div className="flex items-center justify-between mb-2">
-                  <Target className="h-8 w-8 text-purple-500" />
-                  <span className="text-4xl">🏆</span>
-                </div>
-                <div className="text-3xl font-bold mb-1">{stats.streak.best_streak}</div>
-                <div className="text-sm text-muted-foreground">Best Streak</div>
-                {stats.streak.best_streak > 0 && (
-                  <div className="text-xs text-muted-foreground mt-2">
-                    Personal record!
-                  </div>
-                )}
-              </Card>
-
-              {/* Total Sessions */}
-              <Card className="p-6">
-                <div className="flex items-center justify-between mb-2">
-                  <Clock className="h-8 w-8 text-blue-500" />
-                  <span className="text-4xl">📊</span>
-                </div>
-                <div className="text-3xl font-bold mb-1">{stats.timeMetrics.total_sessions}</div>
-                <div className="text-sm text-muted-foreground">Total Sessions</div>
-              </Card>
-            </div>
+            <EngagementMetricsCard
+              currentStreak={stats.streak.current_streak}
+              bestStreak={stats.streak.best_streak}
+              totalSessions={stats.timeMetrics.total_sessions}
+            />
           )}
 
-          {/* Time Metrics */}
+          {/* CARD 2: Heatmap (Primary Visual Hero - Full Width) */}
+          <StudyHeatmap
+            data={heatmapData}
+            getHeatmapColor={getHeatmapColor}
+            formatMinutes={formatMinutes}
+            formatDate={formatDate}
+          />
+
+          {/* CARD 3: Time Metrics */}
           {stats && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="p-6">
-                <div className="text-sm text-muted-foreground mb-2">Today</div>
-                <div className="text-2xl font-bold text-primary">
-                  {formatMinutes(stats.timeMetrics.today_minutes)}
-                </div>
-              </Card>
-
-              <Card className="p-6">
-                <div className="text-sm text-muted-foreground mb-2">This Week</div>
-                <div className="text-2xl font-bold text-primary">
-                  {formatMinutes(stats.timeMetrics.week_minutes)}
-                </div>
-              </Card>
-
-              <Card className="p-6">
-                <div className="text-sm text-muted-foreground mb-2">Total Time</div>
-                <div className="text-2xl font-bold text-primary">
-                  {formatMinutes(stats.timeMetrics.total_minutes)}
-                </div>
-              </Card>
-            </div>
+            <TimeMetricsCard
+              todayMinutes={stats.timeMetrics.today_minutes}
+              weekMinutes={stats.timeMetrics.week_minutes}
+              totalMinutes={stats.timeMetrics.total_minutes}
+              formatMinutes={formatMinutes}
+            />
           )}
 
-          {/* Heatmap */}
-          {renderHeatmap()}
-
-          {/* Recent Sessions */}
+          {/* CARD 4: Recent Sessions */}
           <Card className="p-6">
             <h3 className="font-semibold mb-4 flex items-center gap-2">
               <Clock className="h-5 w-5 text-primary" />

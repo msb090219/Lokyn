@@ -118,6 +118,10 @@ export async function POST(request: NextRequest) {
       sectionData = newSection
     }
 
+    if (!sectionData) {
+      return NextResponse.json({ error: 'Failed to create section' }, { status: 500 })
+    }
+
     // Get the max position in this section
     const { data: maxTask } = await supabase
       .from('tasks')

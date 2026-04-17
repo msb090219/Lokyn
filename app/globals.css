@@ -188,3 +188,22 @@
 .dark .fc-timegrid-event:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
+
+/* Study Heatmap Responsive Styling */
+.heatmap-cell {
+  transition: transform 150ms ease, background-color 200ms ease;
+}
+
+@media (max-width: 768px) {
+  .heatmap-cell {
+    width: 10px !important;
+    height: 10px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .heatmap-cell {
+    width: 8px !important;
+    height: 8px !important;
+  }
+}

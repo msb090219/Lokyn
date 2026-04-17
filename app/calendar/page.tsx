@@ -1432,7 +1432,7 @@ END:VEVENT
             <DayView
               events={events}
               date={currentCalendarDate}
-              onDateClick={() => handleDateClick({ date: currentCalendarDate })}
+              onDateClick={() => handleDateClick(currentCalendarDate)}
               onEventClick={(event) => {
                 setSelectedDate(new Date(event.event_date))
                 setShowDayModal(false)

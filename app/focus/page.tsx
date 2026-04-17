@@ -1,14 +1,21 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Play, Pause, RotateCcw, Calendar, Settings, CheckCircle, BarChart3, Timer, AlertCircle, X } from 'lucide-react'
+import { Play, Pause, RotateCcw, BarChart3, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { useTheme } from 'next-themes'
 import { AppHeader } from '@/components/app-header'
+import { TimerTaskDropdown } from '@/components/timer-task-dropdown'
+import { TimerSettingsMenu } from '@/components/timer-settings-menu'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface StudySession {
   id: string
@@ -33,7 +40,6 @@ const SESSION_CHANNEL = 'study_session_channel'
 
 export default function FocusPage() {
   const router = useRouter()
-  const { theme } = useTheme()
   const [user, setUser] = useState<any>(null)
   const [userProfile, setUserProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -42,7 +48,7 @@ export default function FocusPage() {
   const [timerState, setTimerState] = useState({
     isRunning: false,
     isPaused: false,
-    remainingSeconds: 25 * 60, // Default 25 minutes
+    remainingSeconds: 25 * 60,
     totalSeconds: 25 * 60,
     type: 'study' as 'study' | 'break',
     startedAt: null as Date | null,
@@ -61,8 +67,7 @@ export default function FocusPage() {
   // UI state
   const [focusMode, setFocusMode] = useState(false)
   const [showTitlePrompt, setShowTitlePrompt] = useState(false)
-  const [showTaskSelector, setShowTaskSelector] = useState(false)
-  const [showDurationSettings, setShowDurationSettings] = useState(false)
+  const [isIdle, setIsIdle] = useState(false)
 
   // Idle detection
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null)
@@ -70,7 +75,7 @@ export default function FocusPage() {
 
   // BroadcastChannel for cross-tab communication
   const channelRef = useRef<BroadcastChannel | null>(null)
-  const isMasterTab = useRef(true) // Track if this tab is the master
+  const isMasterTab = useRef(true)
 
   // Load user data and active session
   useEffect(() => {
@@ -139,7 +144,6 @@ export default function FocusPage() {
             setSelectedTaskId(activeSession.task_id)
             setSessionTitle(activeSession.title)
 
-            // Calculate remaining time
             const startedAt = new Date(activeSession.started_at)
             const elapsedSeconds = Math.floor((Date.now() - startedAt.getTime()) / 1000)
             const remaining = Math.max(0, (studyDuration * 60) - elapsedSeconds)
@@ -171,20 +175,18 @@ export default function FocusPage() {
 
         switch (type) {
           case 'SESSION_STARTED':
-            // Another tab started a session, we become slave
             if (!currentSession && data.session) {
               isMasterTab.current = false
               setCurrentSession(data.session)
               setTimerState(prev => ({
                 ...prev,
-                isRunning: false, // Slave tab doesn't run timer
+                isRunning: false,
               }))
               toast.info('Session started in another tab')
             }
             break
 
           case 'SESSION_COMPLETED':
-            // Session completed in another tab
             setCurrentSession(null)
             setTimerState(prev => ({
               ...prev,
@@ -195,7 +197,6 @@ export default function FocusPage() {
             break
 
           case 'TIMER_TICK':
-            // Receive timer updates from master tab
             if (!isMasterTab.current) {
               setTimerState(prev => ({
                 ...prev,
@@ -224,14 +225,12 @@ export default function FocusPage() {
     const interval = setInterval(() => {
       setTimerState(prev => {
         if (prev.remainingSeconds <= 1) {
-          // Timer completed
           handleTimerComplete()
           return { ...prev, isRunning: false }
         }
 
         const newRemaining = prev.remainingSeconds - 1
 
-        // Broadcast tick to other tabs
         if (channelRef.current) {
           channelRef.current.postMessage({
             type: 'TIMER_TICK',
@@ -246,12 +245,13 @@ export default function FocusPage() {
     return () => clearInterval(interval)
   }, [timerState.isRunning, timerState.isPaused])
 
-  // Idle detection for focus mode
+  // Idle detection for focus mode (visual-only, doesn't pause timer)
   useEffect(() => {
     if (!focusMode || !timerState.isRunning) return
 
     const resetIdleTimer = () => {
       lastActivityRef.current = Date.now()
+      setIsIdle(false) // Restore visual state
       if (idleTimerRef.current) {
         clearTimeout(idleTimerRef.current)
       }
@@ -261,13 +261,12 @@ export default function FocusPage() {
       idleTimerRef.current = setTimeout(() => {
         const idleTime = Date.now() - lastActivityRef.current
         if (idleTime >= 10000) { // 10 seconds of inactivity
-          setFocusMode(false)
-          toast.info('Focus mode exited due to inactivity')
+          setIsIdle(true) // Visual-only: dim the overlay
+          // Don't exit focus mode or pause timer
         }
       }, 10000)
     }
 
-    // Track user activity
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart']
     events.forEach(event => {
       window.addEventListener(event, resetIdleTimer)
@@ -287,7 +286,6 @@ export default function FocusPage() {
   }, [focusMode, timerState.isRunning])
 
   const handleTimerComplete = async () => {
-    // Play notification sound
     try {
       const audio = new Audio('/notification.mp3')
       await audio.play()
@@ -295,11 +293,9 @@ export default function FocusPage() {
       console.log('Could not play notification sound')
     }
 
-    // Show completion prompt
     if (timerState.type === 'study') {
       setShowTitlePrompt(true)
     } else {
-      // Break completed, just save
       await completeSession()
     }
   }
@@ -320,14 +316,12 @@ export default function FocusPage() {
       if (response.ok) {
         toast.success('Session completed!')
 
-        // Broadcast completion to other tabs
         if (channelRef.current) {
           channelRef.current.postMessage({
             type: 'SESSION_COMPLETED',
           })
         }
 
-        // Reset state
         setCurrentSession(null)
         setShowTitlePrompt(false)
         setTimerState(prev => ({
@@ -339,7 +333,6 @@ export default function FocusPage() {
           type: 'study',
         }))
 
-        // Ask if user wants to continue
         const shouldContinue = confirm('Start another session?')
         if (shouldContinue) {
           startTimer()
@@ -370,7 +363,7 @@ export default function FocusPage() {
         const data = await response.json()
         const newSession = data.session as StudySession
 
-        isMasterTab.current = true // This tab is now the master
+        isMasterTab.current = true
         setCurrentSession(newSession)
         setTimerState(prev => ({
           ...prev,
@@ -381,7 +374,6 @@ export default function FocusPage() {
           startedAt: new Date(),
         }))
 
-        // Broadcast session start to other tabs
         if (channelRef.current) {
           channelRef.current.postMessage({
             type: 'SESSION_STARTED',
@@ -407,7 +399,6 @@ export default function FocusPage() {
 
   const resetTimer = () => {
     if (currentSession) {
-      // Delete the incomplete session
       fetch(`/api/study-sessions/${currentSession.id}`, {
         method: 'DELETE',
       }).catch(console.error)
@@ -435,6 +426,34 @@ export default function FocusPage() {
     }))
   }
 
+  const handleDurationChange = (study: number, breakTime: number) => {
+    setStudyDuration(study)
+    setBreakDuration(breakTime)
+
+    // Save to user preferences
+    const supabase = createClient()
+    supabase
+      .from('user_preferences')
+      .update({
+        study_duration: study,
+        break_duration: breakTime,
+      })
+      .eq('user_id', user.id)
+      .then()
+
+    // Update timer if not running
+    if (!timerState.isRunning) {
+      const duration = timerState.type === 'study' ? study : breakTime
+      setTimerState(prev => ({
+        ...prev,
+        remainingSeconds: duration * 60,
+        totalSeconds: duration * 60,
+      }))
+    }
+
+    toast.success(`Timer updated: ${study}/${breakTime}`)
+  }
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -443,29 +462,6 @@ export default function FocusPage() {
 
   const getProgressPercentage = () => {
     return ((timerState.totalSeconds - timerState.remainingSeconds) / timerState.totalSeconds) * 100
-  }
-
-  const applyPreset = (preset: typeof DURATION_PRESETS[0]) => {
-    setStudyDuration(preset.study)
-    setBreakDuration(preset.break)
-    setTimerState(prev => ({
-      ...prev,
-      remainingSeconds: prev.type === 'study' ? preset.study * 60 : preset.break * 60,
-      totalSeconds: prev.type === 'study' ? preset.study * 60 : preset.break * 60,
-    }))
-
-    // Save to user preferences
-    const supabase = createClient()
-    supabase
-      .from('user_preferences')
-      .update({
-        study_duration: preset.study,
-        break_duration: preset.break,
-      })
-      .eq('user_id', user.id)
-      .then()
-
-    toast.success(`Timer set to ${preset.label}`)
   }
 
   if (loading) {
@@ -478,265 +474,134 @@ export default function FocusPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <AppHeader activePage="focus" user={user} userProfile={userProfile} />
 
-      {/* Main Content */}
-      <main className={`container mx-auto px-4 py-8 ${focusMode ? 'blur-sm transition-all duration-200' : ''}`}>
-        <div className="max-w-2xl mx-auto">
-          {/* Session Context */}
-          {selectedTaskId && (
-            <div className="mb-6 text-center">
-              <p className="text-sm text-muted-foreground">
-                Studying: <span className="font-medium text-foreground">{tasks.find(t => t.id === selectedTaskId)?.text}</span>
-              </p>
-              <Button
-                variant="link"
-                size="sm"
-                className="mt-1"
-                onClick={() => setSelectedTaskId(null)}
+      <main className="min-h-screen flex items-center justify-center px-4">
+        <div className="w-full max-w-md">
+          {/* Centered Timer Layout */}
+          <div className="text-center">
+            {/* Timer Display */}
+            <div className="mb-8">
+              <div
+                className="text-8xl font-bold tracking-tight"
+                style={{ fontFamily: 'monospace' }}
               >
-                Change task
-              </Button>
-            </div>
-          )}
+                {formatTime(timerState.remainingSeconds)}
+              </div>
 
-          {/* Timer Display */}
-          <div className="bg-card rounded-2xl border border-border p-12 mb-6 shadow-sm">
-            <div className="text-center">
+              {/* Refined Linear Progress Bar with Subtle Tick */}
+              <div className="w-64 h-2 bg-muted rounded-full overflow-hidden mx-auto mt-6">
+                <div
+                  className="h-full bg-primary transition-all duration-1000 ease-out"
+                  style={{ width: `${getProgressPercentage()}%` }}
+                />
+              </div>
+
               {/* Timer Type Badge */}
-              <div className="mb-4">
-                <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
-                  timerState.type === 'study'
-                    ? 'bg-primary/10 text-primary'
-                    : 'bg-green-500/10 text-green-500'
-                }`}>
+              <div className="mt-6">
+                <span
+                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium ${
+                    timerState.type === 'study'
+                      ? 'bg-primary/10 text-primary'
+                      : 'bg-green-500/10 text-green-500'
+                  }`}
+                >
                   {timerState.type === 'study' ? 'Study' : 'Break'} Session
                 </span>
               </div>
 
-              {/* Time Display */}
-              <div className="mb-8">
-                <div className="text-8xl font-bold tracking-tight mb-4" style={{
-                  fontFamily: 'monospace',
-                }}>
-                  {formatTime(timerState.remainingSeconds)}
-                </div>
-
-                {/* Progress Bar */}
-                <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-primary transition-all duration-1000 ease-linear"
-                    style={{ width: `${getProgressPercentage()}%` }}
-                  />
-                </div>
+              {/* Inline Task Dropdown (Contextual Visibility) */}
+              <div className="mt-6 flex justify-center">
+                <TimerTaskDropdown
+                  tasks={tasks}
+                  selectedTaskId={selectedTaskId}
+                  onSelectTask={setSelectedTaskId}
+                />
               </div>
+            </div>
 
-              {/* Control Buttons */}
-              <div className="flex items-center justify-center gap-4">
-                {!timerState.isRunning ? (
-                  <Button
-                    size="lg"
-                    onClick={startTimer}
-                    className="gap-2 px-8"
-                  >
-                    <Play className="h-5 w-5" />
-                    Start
-                  </Button>
-                ) : (
-                  <>
-                    {timerState.isPaused ? (
-                      <Button
-                        size="lg"
-                        onClick={resumeTimer}
-                        className="gap-2 px-8"
-                      >
-                        <Play className="h-5 w-5" />
-                        Resume
-                      </Button>
-                    ) : (
-                      <Button
-                        size="lg"
-                        onClick={pauseTimer}
-                        className="gap-2 px-8"
-                        variant="outline"
-                      >
-                        <Pause className="h-5 w-5" />
-                        Pause
-                      </Button>
-                    )}
+            {/* Single Primary Action Button */}
+            <div className="flex items-center justify-center gap-4">
+              {!timerState.isRunning ? (
+                <Button size="lg" onClick={startTimer} className="gap-2 px-12">
+                  <Play className="h-5 w-5" />
+                  Start
+                </Button>
+              ) : (
+                <>
+                  {timerState.isPaused ? (
+                    <Button size="lg" onClick={resumeTimer} className="gap-2 px-12">
+                      <Play className="h-5 w-5" />
+                      Resume
+                    </Button>
+                  ) : (
                     <Button
                       size="lg"
-                      onClick={resetTimer}
+                      onClick={pauseTimer}
                       variant="outline"
-                      className="gap-2"
+                      className="gap-2 px-12"
                     >
-                      <RotateCcw className="h-5 w-5" />
+                      <Pause className="h-5 w-5" />
+                      Pause
                     </Button>
-                  </>
-                )}
-              </div>
-
-              {/* Type Toggle */}
-              {!timerState.isRunning && (
-                <div className="mt-6">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={toggleTimerType}
-                  >
-                    Switch to {timerState.type === 'study' ? 'Break' : 'Study'} Timer
+                  )}
+                  <Button size="lg" onClick={resetTimer} variant="outline" className="gap-2">
+                    <RotateCcw className="h-5 w-5" />
                   </Button>
-                </div>
+                </>
               )}
             </div>
-          </div>
 
-          {/* Quick Actions */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowTaskSelector(!showTaskSelector)}
-            >
-              Select Task
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowDurationSettings(!showDurationSettings)}
-            >
-              Duration
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setFocusMode(!focusMode)}
-            >
-              Focus Mode
-            </Button>
-            <Link href="/stats">
-              <Button
-                variant="outline"
-                size="sm"
-              >
-                View Stats
-              </Button>
-            </Link>
-          </div>
-
-          {/* Task Selector */}
-          {showTaskSelector && (
-            <div className="bg-card rounded-lg border border-border p-4 mb-6">
-              <h3 className="font-semibold mb-3">Link to Task</h3>
-              <div className="space-y-2 max-h-64 overflow-y-auto">
-                <Button
-                  variant={selectedTaskId === null ? 'default' : 'outline'}
-                  size="sm"
-                  className="w-full justify-start"
-                  onClick={() => {
-                    setSelectedTaskId(null)
-                    setShowTaskSelector(false)
-                  }}
-                >
-                  No task (just study)
+            {/* Type Toggle */}
+            {!timerState.isRunning && (
+              <div className="mt-6">
+                <Button variant="ghost" size="sm" onClick={toggleTimerType}>
+                  Switch to {timerState.type === 'study' ? 'Break' : 'Study'} Timer
                 </Button>
-                {tasks.map(task => (
-                  <Button
-                    key={task.id}
-                    variant={selectedTaskId === task.id ? 'default' : 'outline'}
-                    size="sm"
-                    className="w-full justify-start text-left"
-                    onClick={() => {
-                      setSelectedTaskId(task.id)
-                      setShowTaskSelector(false)
-                    }}
-                  >
-                    {task.text}
-                  </Button>
-                ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Duration Settings */}
-          {showDurationSettings && (
-            <div className="bg-card rounded-lg border border-border p-4 mb-6">
-              <h3 className="font-semibold mb-3">Timer Duration</h3>
+            {/* Icon-Only Settings Menu */}
+            <div className="flex items-center justify-center gap-2 mt-8">
+              <TimerSettingsMenu
+                studyDuration={studyDuration}
+                breakDuration={breakDuration}
+                onDurationChange={handleDurationChange}
+                presets={DURATION_PRESETS}
+              />
 
-              {/* Presets */}
-              <div className="flex gap-2 mb-4">
-                {DURATION_PRESETS.map(preset => (
-                  <Button
-                    key={preset.label}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => applyPreset(preset)}
-                  >
-                    {preset.label}
-                  </Button>
-                ))}
-              </div>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setFocusMode(!focusMode)}
+                      className="h-9 w-9"
+                    >
+                      <span className="text-lg">🎯</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Focus mode</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
 
-              {/* Custom Duration */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-muted-foreground">Study (min)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="180"
-                    value={studyDuration}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value) || 25
-                      setStudyDuration(val)
-                      if (timerState.type === 'study' && !timerState.isRunning) {
-                        setTimerState(prev => ({
-                          ...prev,
-                          remainingSeconds: val * 60,
-                          totalSeconds: val * 60,
-                        }))
-                      }
-                    }}
-                    className="w-full mt-1 px-3 py-2 bg-background border border-border rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">Break (min)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    max="60"
-                    value={breakDuration}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value) || 5
-                      setBreakDuration(val)
-                      if (timerState.type === 'break' && !timerState.isRunning) {
-                        setTimerState(prev => ({
-                          ...prev,
-                          remainingSeconds: val * 60,
-                          totalSeconds: val * 60,
-                        }))
-                      }
-                    }}
-                    className="w-full mt-1 px-3 py-2 bg-background border border-border rounded-md"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Micro Stats */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-card rounded-lg border border-border p-4 text-center">
-              <p className="text-2xl font-bold text-primary">{Math.floor(timerState.totalSeconds / 60)}m</p>
-              <p className="text-sm text-muted-foreground">Session Length</p>
-            </div>
-            <div className="bg-card rounded-lg border border-border p-4 text-center">
-              <p className="text-2xl font-bold text-primary">{timerState.type === 'study' ? '📚' : '☕'}</p>
-              <p className="text-sm text-muted-foreground">
-                {timerState.type === 'study' ? 'Focus Time' : 'Rest Time'}
-              </p>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Link href="/stats">
+                      <Button variant="ghost" size="icon" className="h-9 w-9">
+                        <BarChart3 className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>View stats</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         </div>
@@ -744,15 +609,19 @@ export default function FocusPage() {
 
       {/* Focus Mode Overlay */}
       {focusMode && (
-        <div className="fixed inset-0 bg-background z-50 flex items-center justify-center">
+        <div
+          className={`fixed inset-0 bg-background z-50 flex items-center justify-center transition-opacity duration-300 ${
+            isIdle ? 'opacity-30' : 'opacity-100'
+          }`}
+        >
           <div className="text-center">
-            <div className="text-9xl font-bold tracking-tight mb-8" style={{
-              fontFamily: 'monospace',
-            }}>
+            <div
+              className="text-9xl font-bold tracking-tight mb-8"
+              style={{ fontFamily: 'monospace' }}
+            >
               {formatTime(timerState.remainingSeconds)}
             </div>
 
-            {/* Minimal controls */}
             <div className="flex items-center justify-center gap-4">
               {timerState.isRunning && (
                 <Button
@@ -802,22 +671,16 @@ export default function FocusPage() {
                 if (e.key === 'Enter') {
                   completeSession()
                 } else if (e.key === 'Escape') {
-                  completeSession() // Save with default title
+                  completeSession()
                 }
               }}
             />
 
             <div className="flex gap-2">
-              <Button
-                onClick={() => completeSession()}
-                className="flex-1"
-              >
+              <Button onClick={() => completeSession()} className="flex-1">
                 Save & Finish
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => completeSession()}
-              >
+              <Button variant="outline" onClick={() => completeSession()}>
                 Skip
               </Button>
             </div>

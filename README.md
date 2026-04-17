@@ -46,6 +46,25 @@ A **modern, scalable multi-user productivity dashboard** built with Next.js 15, 
 - **Multi-user**: Each user has their own isolated dashboard
 - **Authentication**: Email/password + OAuth (Google, GitHub)
 
+### Focus & Productivity
+- **Pomodoro Timer**: Customizable focus sessions with work/break intervals
+- **Task Association**: Link specific tasks to focus sessions
+- **Session Tracking**: Automatic tracking of completed focus sessions
+- **Timer Preferences**: Personalizable timer durations and settings
+- **Active Session Management**: Start, pause, and resume focus sessions
+
+### Analytics & Insights
+- **Study Statistics**: Comprehensive metrics on study sessions and productivity
+- **Activity Heatmap**: Visual representation of study patterns over time
+- **Time Metrics**: Track total study time, session count, and engagement
+- **Performance Analytics**: Detailed breakdown of focus sessions and completion rates
+
+### Calendar Integration
+- **Event Management**: Create, edit, and delete calendar events
+- **Multiple Views**: Day, week, month, and list views
+- **Import/Export**: ICS file support for calendar portability
+- **Color Coding**: Customizable event colors with accent color integration
+
 ### Visual Design
 - **Modern Aesthetic**: Cosmic gradient design (deep purple to navy)
 - **Clean Layout**: Minimal borders, soft shadows, rounded corners
@@ -207,6 +226,21 @@ A **modern, scalable multi-user productivity dashboard** built with Next.js 15, 
 - Smooth transition between Light and Dark modes
 - Theme preference syncs across all devices
 
+### Focus Sessions (Pomodoro Timer)
+
+1. **Navigate to Focus page** - Click "Focus" in the navigation
+2. **Select a Task** - Choose a task from your dashboard to focus on
+3. **Set Timer** - Customize work/break intervals in settings
+4. **Start Session** - Click to begin your focus session
+5. **Track Progress** - View completed sessions in Stats page
+
+### Statistics & Analytics
+
+1. **Navigate to Stats page** - Click "Stats" in the navigation
+2. **View Heatmap** - See your study activity patterns over time
+3. **Check Metrics** - Review total study time, session count, and engagement
+4. **Analyze Performance** - Track productivity trends and improvements
+
 ---
 
 ## Keyboard Shortcuts
@@ -345,12 +379,19 @@ dashboard/
 ├── app/                    # Next.js App Router
 │   ├── (auth)/            # Auth routes (login, signup)
 │   ├── dashboard/         # Protected dashboard route
+│   ├── focus/             # Pomodoro timer and focus sessions
+│   ├── stats/             # Statistics and analytics
+│   ├── calendar/          # Calendar and event management
+│   ├── settings/          # User settings and preferences
 │   ├── api/               # API routes
 │   └── layout.tsx         # Root layout
 ├── components/            # React components
 │   ├── ui/               # shadcn/ui components
 │   ├── dashboard/        # Dashboard components
-│   └── auth/             # Auth components
+│   ├── auth/             # Auth components
+│   ├── study-heatmap.tsx # Activity heatmap visualization
+│   ├── time-metrics-card.tsx # Time tracking metrics
+│   └── engagement-metrics-card.tsx # Engagement analytics
 ├── lib/                   # Utility functions
 │   ├── supabase/         # Supabase client
 │   ├── hooks/            # Custom React hooks
@@ -488,10 +529,10 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Version:** 2.0
-**Last Updated:** 2026-03-13
+**Version:** 2.1
+**Last Updated:** 2026-04-18
 **Author:** Min-seo
-**Status:** 🚀 Production Ready - Multi-user, Real-time, Scalable
+**Status:** 🚀 Production Ready - Multi-user, Real-time, Scalable, with Focus & Analytics
 
 ---
 
