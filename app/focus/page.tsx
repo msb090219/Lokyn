@@ -638,13 +638,14 @@ export default function FocusPage() {
             >
               Focus Mode
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              asChild
-            >
-              <Link href="/stats">View Stats</Link>
-            </Button>
+            <Link href="/stats">
+              <Button
+                variant="outline"
+                size="sm"
+              >
+                View Stats
+              </Button>
+            </Link>
           </div>
 
           {/* Task Selector */}
