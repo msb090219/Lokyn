@@ -247,7 +247,7 @@ export default function FocusPage() {
         const idleTime = Date.now() - lastActivityRef.current
         if (idleTime >= 10000) { // 10 seconds of inactivity
           setFocusMode(false)
-          toast.info 'Focus mode exited due to inactivity')
+          toast.info('Focus mode exited due to inactivity')
         }
       }, 10000)
     }
