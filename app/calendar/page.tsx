@@ -4,7 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, CheckCircle, Calendar as CalendarIcon, Plus, Trash2, X, ChevronLeft, ChevronRight, Download, Upload, FileText, Settings, User, ChevronDown, MoreVertical } from 'lucide-react'
+import { LogOut, CheckCircle, Calendar as CalendarIcon, Plus, Trash2, X, ChevronLeft, ChevronRight, Download, Upload, FileText, Settings, User, ChevronDown, MoreVertical, Timer, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import type { EventsRow } from '@/lib/types'
@@ -1218,6 +1218,28 @@ END:VEVENT
               >
                 <CalendarIcon className="h-4 w-4" />
                 Calendar
+              </Button>
+            </Link>
+            <Link href="/focus">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2"
+                aria-label="Go to Focus"
+              >
+                <Timer className="h-4 w-4" />
+                Focus
+              </Button>
+            </Link>
+            <Link href="/stats">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2"
+                aria-label="Go to Stats"
+              >
+                <BarChart3 className="h-4 w-4" />
+                Stats
               </Button>
             </Link>
           </nav>

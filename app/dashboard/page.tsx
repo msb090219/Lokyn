@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, Plus, ChevronDown, ChevronRight, Trash2, GripVertical, CheckCircle, Calendar, Settings, User } from 'lucide-react'
+import { LogOut, Plus, ChevronDown, ChevronRight, Trash2, GripVertical, CheckCircle, Calendar, Settings, User, Timer, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import type { SectionsRow, TasksRow } from '@/lib/types'
@@ -524,6 +524,28 @@ export default function DashboardPage() {
               >
                 <Calendar className="h-4 w-4" />
                 Calendar
+              </Button>
+            </Link>
+            <Link href="/focus">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2"
+                aria-label="Go to Focus"
+              >
+                <Timer className="h-4 w-4" />
+                Focus
+              </Button>
+            </Link>
+            <Link href="/stats">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-2"
+                aria-label="Go to Stats"
+              >
+                <BarChart3 className="h-4 w-4" />
+                Stats
               </Button>
             </Link>
           </nav>
