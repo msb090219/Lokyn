@@ -1202,7 +1202,7 @@ function TaskCard({
   return (
     <div className={`bg-card group flex items-center gap-3 rounded-lg border p-3 transition-all hover:border-primary/50 ${displayCompleted ? 'opacity-60' : ''} ${
       activeSessionTaskId === task.id
-        ? 'border-primary shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] animate-pulse'
+        ? 'border-primary shadow-[0_0_20px_rgba(59,130,246,0.3)] animate-pulse'
         : 'border-border'
     }`}>
       {/* Drag Handle */}

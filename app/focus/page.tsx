@@ -68,6 +68,7 @@ export default function FocusPage() {
 
   // BroadcastChannel for cross-tab communication
   const channelRef = useRef<BroadcastChannel | null>(null)
+  const isMasterTab = useRef(true) // Track if this tab is the master
 
   // Load user data and active session
   useEffect(() => {
@@ -159,6 +160,7 @@ export default function FocusPage() {
           case 'SESSION_STARTED':
             // Another tab started a session, we become slave
             if (!currentSession && data.session) {
+              isMasterTab.current = false
               setCurrentSession(data.session)
               setTimerState(prev => ({
                 ...prev,
@@ -181,7 +183,7 @@ export default function FocusPage() {
 
           case 'TIMER_TICK':
             // Receive timer updates from master tab
-            if (channelRef.current?.name !== 'master') {
+            if (!isMasterTab.current) {
               setTimerState(prev => ({
                 ...prev,
                 remainingSeconds: data.remainingSeconds,
@@ -355,6 +357,7 @@ export default function FocusPage() {
         const data = await response.json()
         const newSession = data.session as StudySession
 
+        isMasterTab.current = true // This tab is now the master
         setCurrentSession(newSession)
         setTimerState(prev => ({
           ...prev,
