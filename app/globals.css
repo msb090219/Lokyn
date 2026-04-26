@@ -11,9 +11,9 @@
     --card-foreground: 0 0% 7%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 7%;
-    --primary: 217 91% 60%;
+    --primary: 218 52% 63%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 96%;
+    --secondary: 223 50% 54%;
     --secondary-foreground: 222 47% 11%;
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
@@ -23,7 +23,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 0 5% 91%;
     --input: 0 5% 91%;
-    --ring: 217 91% 60%;
+    --ring: 218 52% 63%;
     --radius: 0.5rem;
   }
 
@@ -35,9 +35,9 @@
     --card-foreground: 0 0% 98%;
     --popover: 0 0% 12%;
     --popover-foreground: 0 0% 98%;
-    --primary: 217 91% 60%;           /* Default blue accent (user customizable) */
+    --primary: 218 52% 63%;           /* #7496cc - Primary blue */
     --primary-foreground: 0 0% 100%;
-    --secondary: 0 0% 15%;
+    --secondary: 223 50% 54%;         /* #5a7fba - Medium blue */
     --secondary-foreground: 0 0% 98%;
     --muted: 0 0% 18%;
     --muted-foreground: 0 0% 60%;
@@ -47,7 +47,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 0 0% 20%;               /* Subtle gray border */
     --input: 0 0% 20%;
-    --ring: 217 91% 60%;              /* Matches primary (user customizable) */
+    --ring: 218 52% 63%;              /* Matches primary */
     --radius: 0.5rem;
   }
 }
@@ -89,6 +89,7 @@
 .fc-daygrid-day-number {
   color: hsl(var(--foreground));
   font-weight: 500;
+  font-size: 0.875rem;
 }
 
 .fc-day-today {
@@ -99,7 +100,7 @@
   cursor: pointer;
   border-radius: 4px;
   padding: 2px 4px;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 /* Week view styling */
@@ -108,13 +109,15 @@
 }
 
 .fc-timegrid-slot-label {
-  font-size: 11px;
+  font-size: 0.688rem;
   color: hsl(var(--muted-foreground));
+  font-weight: 400;
 }
 
 .fc-col-header-cell-cushion {
   padding: 8px;
   font-weight: 600;
+  font-size: 0.875rem;
   color: hsl(var(--foreground));
 }
 
@@ -122,14 +125,11 @@
   cursor: pointer;
   border-radius: 6px;
   padding: 4px 8px;
-  font-size: 13px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  font-size: 0.875rem;
   border: none !important;
 }
 
 .fc-timegrid-event:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transform: translateY(-1px);
   transition: all 150ms ease;
 }
 
@@ -141,7 +141,7 @@
 }
 
 .fc-timegrid-event-time {
-  font-size: 11px;
+  font-size: 0.688rem;
   opacity: 0.9;
 }
 
@@ -177,21 +177,20 @@
 
 .dark .fc-day-today {
   background-color: hsl(0 0% 18%) !important;
-  border: 1px solid hsl(var(--primary) / 0.3);
+  border: 1px solid hsl(var(--border));
 }
 
 .dark .fc-timegrid-event {
   background: hsl(var(--primary));
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .dark .fc-timegrid-event:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  transition: all 150ms ease;
 }
 
 /* Study Heatmap Responsive Styling */
 .heatmap-cell {
-  transition: transform 150ms ease, background-color 200ms ease;
+  transition: background-color 200ms ease;
 }
 
 @media (max-width: 768px) {
@@ -206,4 +205,14 @@
     width: 8px !important;
     height: 8px !important;
   }
+}
+
+/* Smooth scrolling for settings page */
+.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+/* Scroll margin for better section positioning */
+[id^="section-"] {
+  scroll-margin-top: 1.5rem;
 }

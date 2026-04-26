@@ -17,6 +17,37 @@ const config: Config = {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['var(--font-roboto)', 'system-ui', 'sans-serif'],
+        mono: ['SF Mono', 'Monaco', 'Cascadia Code', 'Roboto Mono', 'Consolas', 'monospace'],
+      },
+      fontSize: {
+        // Display
+        'display-2xl': ['4.5rem', { lineHeight: '1.1', letterSpacing: '-0.02em', fontWeight: '700' }],
+        'display-xl': ['3.75rem', { lineHeight: '1.1', letterSpacing: '-0.01em', fontWeight: '700' }],
+        'display-lg': ['3rem', { lineHeight: '1.2', letterSpacing: '0', fontWeight: '600' }],
+
+        // Headings
+        'h1': ['2.25rem', { lineHeight: '1.3', fontWeight: '700' }],
+        'h2': ['1.875rem', { lineHeight: '1.4', fontWeight: '600' }],
+        'h3': ['1.5rem', { lineHeight: '1.5', fontWeight: '600' }],
+        'h4': ['1.25rem', { lineHeight: '1.5', fontWeight: '600' }],
+        'h5': ['1.125rem', { lineHeight: '1.5', fontWeight: '500' }],
+        'h6': ['1rem', { lineHeight: '1.5', fontWeight: '500' }],
+
+        // Body
+        'body-lg': ['1.125rem', { lineHeight: '1.6', fontWeight: '400' }],
+        'body': ['1rem', { lineHeight: '1.6', fontWeight: '400' }],
+        'body-sm': ['0.875rem', { lineHeight: '1.5', fontWeight: '400' }],
+
+        // UI Components
+        'ui-base': ['0.875rem', { lineHeight: '1.4', fontWeight: '500' }],
+
+        // Captions
+        'caption': ['0.75rem', { lineHeight: '1.5', fontWeight: '400' }],
+        'overline': ['0.625rem', { lineHeight: '1.4', fontWeight: '500', letterSpacing: '0.05em' }],
+        'micro': ['0.688rem', { lineHeight: '1.4', fontWeight: '400' }],
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
