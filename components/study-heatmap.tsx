@@ -62,29 +62,76 @@ export function StudyHeatmap({
       }
     })
 
+    // Get month labels (show every 2 months)
+    const monthLabels: string[] = []
+    const monthsSet = new Set<string>()
+
+    weeks.forEach((week, weekIndex) => {
+      if (week.length > 0) {
+        const month = week[0].date.toLocaleDateString('en-US', { month: 'short' })
+        if (!monthsSet.has(month)) {
+          monthsSet.add(month)
+          monthLabels.push(month)
+        } else {
+          monthLabels.push('')
+        }
+      }
+    })
+
+    // Day labels for left side
+    const dayLabels = ['', 'Mon', '', 'Wed', '', 'Fri', '']
+
     return (
       <div className="overflow-x-auto">
         <div className="flex gap-1 min-w-fit">
-          {weeks.map((week, weekIndex) => (
-            <div key={weekIndex} className="flex flex-col gap-1">
-              {week.map((day, dayIndex) => {
-                const isToday = day.date.toDateString() === new Date().toDateString()
-                return (
-                  <div
-                    key={`${weekIndex}-${dayIndex}`}
-                    className="heatmap-cell rounded-sm transition-all hover:scale-125 cursor-pointer"
-                    style={{
-                      width: '12px',
-                      height: '12px',
-                      backgroundColor: getHeatmapColor(day.minutes),
-                      border: isToday ? '2px solid var(--primary)' : 'none',
-                    }}
-                    title={`${day.date.toLocaleDateString()}: ${formatMinutes(day.minutes)} (${day.sessions} sessions)`}
-                  />
-                )
-              })}
+          {/* Day labels column */}
+          <div className="flex flex-col gap-1 mr-2">
+            <div className="h-3"></div>
+            {dayLabels.map((label, i) => (
+              <div key={i} className="flex items-center text-xs text-muted-foreground" style={{ height: '12px' }}>
+                {label}
+              </div>
+            ))}
+          </div>
+
+          {/* Month labels row */}
+          <div className="flex flex-col">
+            <div className="flex gap-1 mb-1">
+              {monthLabels.map((month, i) => (
+                <div
+                  key={i}
+                  className="text-xs text-muted-foreground"
+                  style={{ minWidth: i === 0 ? '48px' : '12px', marginLeft: i === 0 ? '36px' : '0' }}
+                >
+                  {month}
+                </div>
+              ))}
             </div>
-          ))}
+
+            {/* Heatmap grid */}
+            <div className="flex gap-1">
+              {weeks.map((week, weekIndex) => (
+                <div key={weekIndex} className="flex flex-col gap-1">
+                  {week.map((day, dayIndex) => {
+                    const isToday = day.date.toDateString() === new Date().toDateString()
+                    return (
+                      <div
+                        key={`${weekIndex}-${dayIndex}`}
+                        className="heatmap-cell rounded-sm transition-all hover:scale-125 cursor-pointer"
+                        style={{
+                          width: '12px',
+                          height: '12px',
+                          backgroundColor: getHeatmapColor(day.minutes),
+                          border: isToday ? '2px solid var(--primary)' : 'none',
+                        }}
+                        title={`${day.date.toLocaleDateString()}: ${formatMinutes(day.minutes)} (${day.sessions} sessions)`}
+                      />
+                    )
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Legend */}

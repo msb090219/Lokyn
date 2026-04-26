@@ -1,11 +1,11 @@
-import { createClient } from '@/lib/supabase/client'
+import { createServerClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import type { StudySessionsInsert, StudySessionsUpdate } from '@/lib/types'
 
 // GET - Fetch study sessions for the authenticated user
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 // POST - Create a new study session
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createClient()
+    const supabase = createServerClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { task_id, title, duration_minutes, type = 'study' } = body
+    const { task_id, task_ids, title, duration_minutes, type = 'study' } = body
 
     // Validation
     if (!duration_minutes || duration_minutes <= 0) {
@@ -83,17 +83,40 @@ export async function POST(request: NextRequest) {
       started_at: new Date().toISOString(),
     }
 
-    const { data, error } = await supabase
+    const { data: session, error: insertError } = await supabase
       .from('study_sessions')
       .insert(insertData)
       .select()
       .single()
 
-    if (error) throw error
+    if (insertError) throw insertError
+
+    // If multiple tasks provided, create junction records
+    let sessionTasks = []
+    if (task_ids && task_ids.length > 0) {
+      const tasksToInsert = task_ids.map((taskId: string, index: number) => ({
+        session_id: session.id,
+        task_id: taskId,
+        position: index,
+        completed: false,
+      }))
+
+      const { data: tasksData, error: tasksError } = await supabase
+        .from('session_tasks')
+        .insert(tasksToInsert)
+        .select('*, task(id, text)')
+
+      if (tasksError) {
+        // Log error but don't fail - session was created successfully
+        console.error('Failed to create session tasks:', tasksError)
+      } else {
+        sessionTasks = tasksData || []
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      session: data,
+      session: { ...session, tasks: sessionTasks },
     }, { status: 201 })
   } catch (error: any) {
     console.error('Error creating study session:', error)
