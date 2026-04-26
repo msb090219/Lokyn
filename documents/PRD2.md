@@ -355,4 +355,4 @@ If you want, I can:
 * Or define the **backend logic for session tracking**
 * Or build the **heatmap aggregation logic**
 
-Just choose the layer.
+Just choose the layer.ot 
