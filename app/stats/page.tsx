@@ -20,11 +20,111 @@ interface StatsData {
   heatmap: HeatmapDataPoint[]
 }
 
+// Generate sample data for testing/development
+const generateSampleData = (userId: string) => {
+  const now = new Date()
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
+
+  // Sample streak data
+  const streakData: StreakData = {
+    current_streak: 12,
+    best_streak: 30,
+    last_study_date: yesterday.toISOString(),
+    last_updated: now.toISOString()
+  }
+
+  // Sample time metrics
+  const timeMetrics: TimeMetricsData = {
+    today_minutes: 135, // 2h 15m
+    week_minutes: 765, // 12h 45m
+    total_minutes: 2910, // 48h 30m
+    total_sessions: 156,
+    last_updated: now.toISOString()
+  }
+
+  // Sample heatmap data (last 90 days with varied activity)
+  const heatmapData: HeatmapDataPoint[] = []
+
+  for (let i = 0; i < 90; i++) {
+    const date = new Date(now)
+    date.setDate(date.getDate() - i)
+    date.setHours(0, 0, 0, 0)
+
+    // Realistic pattern: 40% chance of study, varying durations
+    // Weekdays slightly more active than weekends
+    const dayOfWeek = date.getDay()
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+    const studyProbability = isWeekend ? 0.3 : 0.5
+
+    if (Math.random() < studyProbability) {
+      const baseMinutes = 25
+      const randomExtra = Math.floor(Math.random() * 275) // 0-275 extra minutes
+      const minutes = baseMinutes + randomExtra
+
+      heatmapData.push({
+        study_date: date.toISOString(),
+        total_minutes: minutes,
+        session_count: Math.ceil(minutes / 25)
+      })
+    }
+  }
+
+  // Sample recent sessions
+  const sessionTitles = [
+    'Calculus Chapter 3',
+    'Physics Review - Mechanics',
+    'Essay Writing - History',
+    'Chemistry Problem Set',
+    'Literature Reading',
+    'Math Practice Problems',
+    'Biology Notes Review',
+    'Programming Project',
+    'Statistics Homework',
+    'Research Paper Writing',
+    'Language Learning',
+    'Study Group Session'
+  ]
+
+  const sessions: StudySessionsRow[] = []
+  const sessionTypes: Array<'study' | 'break'> = ['study', 'study', 'study', 'study', 'break']
+
+  for (let i = 0; i < 15; i++) {
+    const hoursAgo = i * 2 + 1 // 1, 3, 5, 7... hours ago
+    const startedAt = new Date(now)
+    startedAt.setHours(startedAt.getHours() - hoursAgo)
+
+    const duration = [25, 50, 75, 100][Math.floor(Math.random() * 4)]
+    const completedAt = new Date(startedAt)
+    completedAt.setMinutes(completedAt.getMinutes() + duration)
+
+    sessions.push({
+      id: `sample-${i}`,
+      user_id: userId,
+      task_id: null,
+      title: sessionTitles[i % sessionTitles.length],
+      duration_minutes: duration,
+      started_at: startedAt.toISOString(),
+      completed_at: completedAt.toISOString(),
+      type: sessionTypes[Math.floor(Math.random() * sessionTypes.length)],
+      created_at: startedAt.toISOString(),
+      updated_at: completedAt.toISOString()
+    })
+  }
+
+  return {
+    streak: streakData,
+    timeMetrics,
+    heatmap: heatmapData,
+    sessions
+  }
+}
+
 export default function StatsPage() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [userProfile, setUserProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [stats, setStats] = useState<StatsData | null>(null)
   const [sessions, setSessions] = useState<StudySessionsRow[]>([])
   const [heatmapData, setHeatmapData] = useState<HeatmapDataPoint[]>([])
@@ -42,30 +142,44 @@ export default function StatsPage() {
 
         setUser(authUser)
 
-        // Load user profile
-        const { data: profile } = await supabase
-          .from('user_preferences')
-          .select('*')
-          .eq('user_id', authUser.id)
-          .single()
+        // Load profile, stats, and sessions in parallel
+        const [profileResult, statsResult, sessionsResult] = await Promise.all([
+          supabase
+            .from('user_preferences')
+            .select('*')
+            .eq('user_id', authUser.id)
+            .single(),
+          fetch('/api/study-stats'),
+          fetch('/api/study-sessions?limit=20')
+        ])
 
-        if (profile) {
-          setUserProfile(profile)
+        if (profileResult.data) {
+          setUserProfile(profileResult.data)
         }
 
-        // Load stats
-        const statsResponse = await fetch('/api/study-stats')
-        if (statsResponse.ok) {
-          const data = await statsResponse.json()
+        if (statsResult.ok) {
+          const data = await statsResult.json()
           setStats(data)
           setHeatmapData(data.heatmap || [])
         }
 
-        // Load recent sessions
-        const sessionsResponse = await fetch('/api/study-sessions?limit=20')
-        if (sessionsResponse.ok) {
-          const sessionsData = await sessionsResponse.json()
+        if (sessionsResult.ok) {
+          const sessionsData = await sessionsResult.json()
           setSessions(sessionsData.sessions || [])
+        }
+
+        // If no real data exists, use sample data for demonstration
+        if (!stats || stats.timeMetrics.total_sessions === 0) {
+          const sampleData = generateSampleData(authUser.id)
+          setStats({
+            streak: sampleData.streak,
+            timeMetrics: sampleData.timeMetrics,
+            heatmap: sampleData.heatmap
+          })
+          setHeatmapData(sampleData.heatmap)
+          setSessions(sampleData.sessions)
+
+          toast.info('Showing sample data for demonstration')
         }
       } catch (error) {
         console.error('Error loading data:', error)
@@ -108,10 +222,10 @@ export default function StatsPage() {
     })
   }
 
-  if (loading) {
+  if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-t-transparent"></div>
       </div>
     )
   }
@@ -176,7 +290,7 @@ export default function StatsPage() {
                   >
                     <div className="flex-1">
                       <div className="font-medium">{session.title}</div>
-                      <div className="text-sm text-muted-foreground flex items-center gap-2 mt-1">
+                      <div className="text-body-sm text-muted-foreground flex items-center gap-2 mt-1">
                         <span>{formatDateTime(session.started_at)}</span>
                         <span className="text-primary">•</span>
                         <span>{formatMinutes(session.duration_minutes)}</span>

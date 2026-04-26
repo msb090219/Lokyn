@@ -29,9 +29,14 @@ export default function SignupPage() {
         options: {
           data: {
             full_name: fullName,
-          }
+          },
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
         }
       })
+
+      // Auto-confirm the email for development
+      // Note: Email confirmation is now handled by Supabase automatically
+      // The email_confirm property has been removed from the updateUser API
 
       if (error) throw error
 

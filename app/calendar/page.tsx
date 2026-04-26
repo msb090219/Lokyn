@@ -4,90 +4,19 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, CheckCircle, Calendar as CalendarIcon, Plus, Trash2, X, ChevronLeft, ChevronRight, Download, Upload, FileText, Settings, User, ChevronDown, MoreVertical, Timer, BarChart3 } from 'lucide-react'
+import { CheckCircle, Calendar as CalendarIcon, Plus, Trash2, X, ChevronLeft, ChevronRight, Download, Upload, FileText, ChevronDown, Timer, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { UserProfileMenu } from '@/components/user-profile-menu'
 import { toast } from 'sonner'
-import type { EventsRow } from '@/lib/types'
-import FullCalendar from '@fullcalendar/react'
-import dayGridPlugin from '@fullcalendar/daygrid'
-import timeGridPlugin from '@fullcalendar/timegrid'
-import listPlugin from '@fullcalendar/list'
-import interactionPlugin from '@fullcalendar/interaction'
-import { AccentColorProvider } from '@/components/providers/theme-provider'
-
-type EventColor = 'blue' | 'red' | 'green'
-
-const colorMap = {
-  blue: 'bg-blue-500 hover:bg-blue-600',
-  red: 'bg-red-500 hover:bg-red-600',
-  green: 'bg-green-500 hover:bg-green-600',
-}
-
-const colorDotMap = {
-  blue: 'bg-blue-500',
-  red: 'bg-red-500',
-  green: 'bg-green-500',
-}
-
-// Helper to get initials from name
-const getInitials = (name: string) => {
-  const parts = name.trim().split(' ')
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-  }
-  return parts[0]?.substring(0, 2).toUpperCase() || 'US'
-}
-
-// Helper to generate avatar color
-const getAvatarColor = (name: string) => {
-  const colors = [
-    'bg-blue-500',
-    'bg-purple-500',
-    'bg-pink-500',
-    'bg-indigo-500',
-    'bg-cyan-500',
-    'bg-teal-500',
-    'bg-orange-500',
-  ]
-  const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  return colors[index % colors.length]
-}
+import type { EventsRow, EventColor } from '@/lib/types'
+import { EventCard } from '@/components/calendar/event-card'
+import { EventForm } from '@/components/calendar/event-form'
+import { TimeGridDayView } from '@/components/calendar/time-grid-day-view'
+import { formatTime24Hour, parseTime24Hour, calculateDurationMinutes, snapTo15Minutes } from '@/components/calendar/event-positioning'
 
 // ============================================================
 // SHARED COMPONENTS
 // ============================================================
-
-// Minimal Event Card - used across all views
-function MinimalEventCard({
-  event,
-  onClick,
-}: {
-  event: EventsRow
-  onClick: () => void
-}) {
-  const eventDate = new Date(event.event_date)
-  const isAllDayEvent = event.all_day === true || (eventDate.getHours() === 0 && eventDate.getMinutes() === 0)
-
-  return (
-    <div
-      onClick={onClick}
-      className="flex items-start gap-2 px-3 py-2 bg-card border border-border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
-    >
-      {/* Colored dot indicator */}
-      <div className={`w-1.5 h-1.5 rounded-full ${colorDotMap[event.color as EventColor]} mt-1.5 flex-shrink-0`} />
-
-      {/* Time */}
-      <div className="text-xs font-medium tabular-ns text-muted-foreground min-w-[60px]">
-        {isAllDayEvent ? 'All day' : eventDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-      </div>
-
-      {/* Title */}
-      <div className="text-sm font-medium flex-1">
-        {event.title}
-      </div>
-    </div>
-  )
-}
 
 // Day Header component
 function DayHeader({
@@ -135,17 +64,19 @@ function getSortedEventsForDate(events: EventsRow[], date: Date) {
 }
 
 // ============================================================
-// DAY VIEW COMPONENT
+// DAY VIEW COMPONENT (Mobile - List View)
 // ============================================================
 
 function DayView({
   events,
   date,
+  importGroupNames,
   onDateClick,
   onEventClick,
 }: {
   events: EventsRow[]
   date: Date
+  importGroupNames?: Map<string, string>
   onDateClick: () => void
   onEventClick: (event: EventsRow) => void
 }) {
@@ -162,20 +93,28 @@ function DayView({
       {/* Events list */}
       {dayEvents.length === 0 ? (
         <div
-          className="flex-1 flex items-center justify-center px-3 py-6 text-sm text-muted-foreground hover:bg-accent/50 cursor-pointer text-center min-h-[200px]"
+          className="flex-1 flex items-center justify-center px-3 py-6 text-sm text-muted-foreground hover:bg-primary hover:text-primary-foreground cursor-pointer text-center min-h-[200px]"
           onClick={onDateClick}
         >
-          No events
+          <div className="flex flex-col items-center gap-2">
+            <Plus className="h-5 w-5" />
+            <span>No events</span>
+          </div>
         </div>
       ) : (
         <div className="flex-1 p-3 space-y-1.5 overflow-y-auto">
-          {dayEvents.map((event) => (
-            <MinimalEventCard
-              key={event.id}
-              event={event}
-              onClick={() => onEventClick(event)}
-            />
-          ))}
+          {dayEvents.map((event) => {
+            const importGroupName = event.import_batch_id ? importGroupNames?.get(event.import_batch_id) : undefined
+            return (
+              <EventCard
+                key={event.id}
+                event={event}
+                variant="compact"
+                importGroupName={importGroupName}
+                onClick={() => onEventClick(event)}
+              />
+            )
+          })}
         </div>
       )}
     </div>
@@ -189,11 +128,13 @@ function DayView({
 function WeekView({
   events,
   currentCalendarDate,
+  importGroupNames,
   onDateClick,
   onEventClick,
 }: {
   events: EventsRow[]
   currentCalendarDate: Date
+  importGroupNames?: Map<string, string>
   onDateClick: (date: Date) => void
   onEventClick: (event: EventsRow) => void
 }) {
@@ -236,19 +177,27 @@ function WeekView({
               <div className="flex-1 p-2 space-y-1.5 overflow-y-auto">
                 {dayEvents.length === 0 ? (
                   <div
-                    className="h-full flex items-center justify-center px-2 py-6 text-xs text-muted-foreground hover:bg-accent/50 cursor-pointer text-center min-h-[120px]"
+                    className="h-full flex items-center justify-center px-2 py-6 text-xs text-muted-foreground hover:bg-primary hover:text-primary-foreground cursor-pointer text-center min-h-[120px]"
                     onClick={() => onDateClick(date)}
                   >
-                    No events
+                    <div className="flex flex-col items-center gap-1">
+                      <Plus className="h-4 w-4" />
+                      <span>No events</span>
+                    </div>
                   </div>
                 ) : (
-                  dayEvents.map((event) => (
-                    <MinimalEventCard
-                      key={event.id}
-                      event={event}
-                      onClick={() => onEventClick(event)}
-                    />
-                  ))
+                  dayEvents.map((event) => {
+                    const importGroupName = event.import_batch_id ? importGroupNames?.get(event.import_batch_id) : undefined
+                    return (
+                      <EventCard
+                        key={event.id}
+                        event={event}
+                        variant="compact"
+                        importGroupName={importGroupName}
+                        onClick={() => onEventClick(event)}
+                      />
+                    )
+                  })
                 )}
               </div>
             </div>
@@ -266,11 +215,13 @@ function WeekView({
 function MonthView({
   events,
   currentCalendarDate,
+  importGroupNames,
   onDateClick,
   onEventClick,
 }: {
   events: EventsRow[]
   currentCalendarDate: Date
+  importGroupNames?: Map<string, string>
   onDateClick: (date: Date) => void
   onEventClick: (event: EventsRow) => void
 }) {
@@ -336,28 +287,28 @@ function MonthView({
               <div className="flex-1 space-y-1">
                 {dayEvents.length === 0 ? (
                   <div
-                    className="h-full min-h-[40px] flex items-center justify-center text-xs text-muted-foreground hover:bg-accent/50 rounded cursor-pointer"
+                    className="h-full min-h-[40px] flex items-center justify-center hover:bg-primary hover:text-primary-foreground rounded cursor-pointer"
                     onClick={() => onDateClick(date)}
                   >
-                    +
+                    <Plus className="h-3 w-3 text-muted-foreground" />
                   </div>
                 ) : (
                   <>
-                    {dayEvents.slice(0, 3).map((event) => (
-                      <div
-                        key={event.id}
-                        onClick={() => onEventClick(event)}
-                        className="flex items-center gap-1 px-1.5 py-0.5 bg-card border border-border rounded hover:bg-accent/50 cursor-pointer truncate"
-                      >
-                        <div className={`w-1 h-1 rounded-full flex-shrink-0 ${colorDotMap[event.color as EventColor]}`} />
-                        <span className="text-xs truncate flex-1">
-                          {event.title}
-                        </span>
-                      </div>
-                    ))}
+                    {dayEvents.slice(0, 3).map((event) => {
+                      const importGroupName = event.import_batch_id ? importGroupNames?.get(event.import_batch_id) : undefined
+                      return (
+                        <EventCard
+                          key={event.id}
+                          event={event}
+                          variant="month"
+                          importGroupName={importGroupName}
+                          onClick={() => onEventClick(event)}
+                        />
+                      )
+                    })}
                     {dayEvents.length > 3 && (
                       <div
-                        className="text-xs text-muted-foreground px-1.5 cursor-pointer hover:bg-accent/50 rounded"
+                        className="text-xs text-muted-foreground px-1.5 cursor-pointer hover:bg-primary hover:text-primary-foreground rounded"
                         onClick={() => onDateClick(date)}
                       >
                         +{dayEvents.length - 3} more
@@ -382,51 +333,42 @@ export default function CalendarPage() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [userProfile, setUserProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [accentColor, setAccentColor] = useState<string>('#3B82F6')
+  const [loading, setLoading] = useState(false)
   const [events, setEvents] = useState<EventsRow[]>([])
+  const [importGroupNames, setImportGroupNames] = useState<Map<string, string>>(new Map())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [showDayModal, setShowDayModal] = useState(false)
   const [showEventModal, setShowEventModal] = useState(false)
   const [editingEvent, setEditingEvent] = useState<EventsRow | null>(null)
+
+  // Form state with start/end times
   const [eventTitle, setEventTitle] = useState('')
-  const [eventTime, setEventTime] = useState('12:00')
+  const [eventStartTime, setEventStartTime] = useState('09:00')
+  const [eventEndTime, setEventEndTime] = useState('10:00')
   const [eventColor, setEventColor] = useState<EventColor>('blue')
-  const [isAllDay, setIsAllDay] = useState(false)
+  const [eventIsAllDay, setEventIsAllDay] = useState(false)
+  const [eventDescription, setEventDescription] = useState('')
+
   const [currentView, setCurrentView] = useState<'listDay' | 'listWeek' | 'dayGridMonth'>('listDay')
   const [currentCalendarDate, setCurrentCalendarDate] = useState<Date>(new Date())
   const [showImportModal, setShowImportModal] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
+  const [importGroupName, setImportGroupName] = useState('')
+  const [importGroupColor, setImportGroupColor] = useState<EventColor>('blue')
   const [isImporting, setIsImporting] = useState(false)
-  const [showUserMenu, setShowUserMenu] = useState(false)
   const [showManageImports, setShowManageImports] = useState(false)
   const [showActionsMenu, setShowActionsMenu] = useState(false)
-  const lastLocalUpdate = useRef<number>(0)
-  const calendarRef = useRef<FullCalendar>(null)
-  const userMenuRef = useRef<HTMLDivElement>(null)
-  const actionsMenuRef = useRef<HTMLDivElement>(null)
+  const [editingImportGroup, setEditingImportGroup] = useState<{batchId: string; name: string; color: EventColor} | null>(null)
 
-  // Switch view function
-  const switchView = (view: 'listDay' | 'listWeek' | 'dayGridMonth') => {
-    setCurrentView(view)
-    const calendarApi = calendarRef.current?.getApi()
-    if (calendarApi) {
-      calendarApi.changeView(view === 'listDay' ? 'dayGridDay' : view === 'listWeek' ? 'dayGridWeek' : 'dayGridMonth')
-    }
-  }
+  const lastLocalUpdate = useRef<number>(0)
+  const actionsMenuRef = useRef<HTMLDivElement>(null)
 
   // Go to today
   const goToToday = () => {
-    if (currentView === 'dayGridMonth') {
-      const calendarApi = calendarRef.current?.getApi()
-      if (calendarApi) {
-        calendarApi.today()
-      }
-    }
     setCurrentCalendarDate(new Date())
   }
 
-  // Load user data and events
+  // Load user data, events, and import groups
   const loadUserData = useCallback(async () => {
     try {
       const supabase = createClient()
@@ -439,24 +381,31 @@ export default function CalendarPage() {
       }
       setUser(session.user)
 
-      // Load user profile
-      const { data: profile } = await supabase
-        .from('user_preferences')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .single()
+      // Load events, profile, and import groups in parallel
+      const [eventsResult, profileResult, importGroupsResult] = await Promise.all([
+        supabase
+          .from('events')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .order('event_date', { ascending: true }),
+        supabase
+          .from('user_preferences')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .single(),
+        supabase
+          .from('import_groups')
+          .select('*')
+          .eq('user_id', session.user.id)
+      ])
+
+      const { data: eventsData, error } = eventsResult
+      const { data: profile } = profileResult
+      const { data: importGroupsData } = importGroupsResult
 
       if (profile) {
         setUserProfile(profile)
-        setAccentColor(profile.accent_color || '#3B82F6')
       }
-
-      // Load events
-      const { data: eventsData, error } = await supabase
-        .from('events')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .order('event_date', { ascending: true })
 
       if (error) {
         console.error('Error loading events:', JSON.stringify(error, null, 2))
@@ -468,7 +417,16 @@ export default function CalendarPage() {
 
       setEvents(eventsData || [])
 
-      // Subscribe to real-time changes
+      // Build import group names map
+      if (importGroupsData) {
+        const map = new Map<string, string>()
+        importGroupsData.forEach(group => {
+          map.set(group.batch_id, group.name)
+        })
+        setImportGroupNames(map)
+      }
+
+      // Subscribe to real-time changes for events
       const channel = supabase
         .channel('calendar-changes')
         .on(
@@ -487,8 +445,27 @@ export default function CalendarPage() {
         )
         .subscribe()
 
-      // Store channel for cleanup
+      // Subscribe to import groups changes
+      const groupsChannel = supabase
+        .channel('import-groups-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'import_groups',
+            filter: `user_id=eq.${session.user.id}`,
+          },
+          (payload) => {
+            if (Date.now() - lastLocalUpdate.current < 1000) return
+            loadUserData()
+          }
+        )
+        .subscribe()
+
+      // Store channels for cleanup
       ;(window as any).__calendarChannel = channel
+      ;(window as any).__importGroupsChannel = groupsChannel
     } catch (error: any) {
       console.error('Error loading data:', JSON.stringify(error, null, 2))
       console.error('Error message:', error?.message || 'No message')
@@ -507,9 +484,6 @@ export default function CalendarPage() {
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
-        setShowUserMenu(false)
-      }
       if (actionsMenuRef.current && !actionsMenuRef.current.contains(event.target as Node)) {
         setShowActionsMenu(false)
       }
@@ -526,19 +500,41 @@ export default function CalendarPage() {
     toast.success('Signed out successfully')
   }
 
-  // Handle date click
-  const handleDateClick = (date: Date) => {
-    setSelectedDate(date)
+  // Handle date click (optional time parameter for time grid clicks)
+  const handleDateClick = (date: Date, time?: Date) => {
+    let finalDate = new Date(date)
+    if (time) {
+      // If time provided, set the hours/minutes
+      finalDate = new Date(date)
+      finalDate.setHours(time.getHours(), time.getMinutes(), 0, 0)
+    }
+    setSelectedDate(finalDate)
     setShowDayModal(true)
   }
 
   // Open add event modal
-  const openAddEventModal = () => {
+  const openAddEventModal = (preselectedTime?: Date) => {
     setEditingEvent(null)
     setEventTitle('')
-    setEventTime('12:00')
+    setEventDescription('')
+
+    if (preselectedTime) {
+      // Set times based on clicked time slot
+      const snappedTime = snapTo15Minutes(preselectedTime)
+      setEventStartTime(formatTime24Hour(snappedTime))
+
+      // Default to 1 hour duration
+      const endTime = new Date(snappedTime)
+      endTime.setMinutes(endTime.getMinutes() + 60)
+      setEventEndTime(formatTime24Hour(endTime))
+      setEventIsAllDay(false)
+    } else {
+      setEventStartTime('09:00')
+      setEventEndTime('10:00')
+      setEventIsAllDay(false)
+    }
+
     setEventColor('blue')
-    setIsAllDay(false)
     setShowEventModal(true)
   }
 
@@ -546,16 +542,27 @@ export default function CalendarPage() {
   const openEditEventModal = (event: EventsRow) => {
     setEditingEvent(event)
     setEventTitle(event.title)
-    const date = new Date(event.event_date)
-    const hours = date.getHours().toString().padStart(2, '0')
-    const minutes = date.getMinutes().toString().padStart(2, '0')
-    setEventTime(`${hours}:${minutes}`)
+    setEventDescription(event.description || '')
+
+    const startDate = new Date(event.event_date)
+    const endDate = new Date(event.end_time)
+
+    // Check if it's an all-day event
+    const isAllDayEvent = event.all_day === true ||
+      (startDate.getHours() === 0 && startDate.getMinutes() === 0 &&
+       endDate.getHours() === 0 && endDate.getMinutes() === 0)
+
+    setEventIsAllDay(isAllDayEvent)
+
+    if (!isAllDayEvent) {
+      setEventStartTime(formatTime24Hour(startDate))
+      setEventEndTime(formatTime24Hour(endDate))
+    } else {
+      setEventStartTime('09:00')
+      setEventEndTime('10:00')
+    }
+
     setEventColor((event.color || 'blue') as EventColor)
-
-    // Check if it's an all-day event (either from database flag or midnight time)
-    const isAllDayEvent = event.all_day === true || (date.getHours() === 0 && date.getMinutes() === 0)
-    setIsAllDay(isAllDayEvent)
-
     setShowEventModal(true)
   }
 
@@ -574,84 +581,74 @@ export default function CalendarPage() {
     const supabase = createClient()
 
     try {
-      // Parse time and create event date
-      const [hours, minutes] = eventTime.split(':').map(Number)
-      const eventDate = new Date(selectedDate)
+      let eventDate: Date
+      let endTime: Date
 
-      // For all-day events, set to start of day (00:00)
-      if (isAllDay) {
+      if (eventIsAllDay) {
+        // All-day event: start at midnight, end at midnight next day
+        eventDate = new Date(selectedDate)
         eventDate.setHours(0, 0, 0, 0)
+
+        endTime = new Date(eventDate)
+        endTime.setDate(endTime.getDate() + 1)
       } else {
-        eventDate.setHours(hours, minutes, 0, 0)
+        // Parse start and end times
+        eventDate = parseTime24Hour(eventStartTime, selectedDate)
+        endTime = parseTime24Hour(eventEndTime, selectedDate)
+
+        // Handle case where end time is before start time (next day)
+        if (endTime < eventDate) {
+          endTime.setDate(endTime.getDate() + 1)
+        }
+
+        // Validate end time is after start time
+        if (endTime <= eventDate) {
+          toast.error('End time must be after start time')
+          return
+        }
       }
+
+      // Calculate duration in minutes
+      const durationMinutes = Math.round((endTime.getTime() - eventDate.getTime()) / 60000)
 
       if (editingEvent) {
         // Update existing event
         lastLocalUpdate.current = Date.now()
 
-        const updateData: any = {
-          title: eventTitle.trim(),
-          event_date: eventDate.toISOString(),
-          color: eventColor,
-        }
-
-        // Try to include all_day field
         const { error } = await supabase
           .from('events')
           .update({
-            ...updateData,
-            all_day: isAllDay,
+            title: eventTitle.trim(),
+            event_date: eventDate.toISOString(),
+            end_time: endTime.toISOString(),
+            duration_minutes: durationMinutes,
+            color: eventColor,
+            description: eventDescription || null,
+            all_day: eventIsAllDay,
           })
           .eq('id', editingEvent.id)
 
-        if (error) {
-          // If error about missing column, retry without all_day
-          if (error.message?.includes('column') || error.code === 'PGRST204') {
-            console.log('Retrying update without all_day field...')
-            const { error: retryError } = await supabase
-              .from('events')
-              .update(updateData)
-              .eq('id', editingEvent.id)
-
-            if (retryError) throw retryError
-          } else {
-            throw error
-          }
-        }
+        if (error) throw error
 
         toast.success('Event updated')
       } else {
         // Create new event
         lastLocalUpdate.current = Date.now()
 
-        const insertData: any = {
-          user_id: user.id,
-          title: eventTitle.trim(),
-          event_date: eventDate.toISOString(),
-          color: eventColor,
-        }
-
-        // Try to include all_day field
         const { error } = await supabase
           .from('events')
           .insert({
-            ...insertData,
-            all_day: isAllDay,
+            user_id: user.id,
+            title: eventTitle.trim(),
+            event_date: eventDate.toISOString(),
+            end_time: endTime.toISOString(),
+            duration_minutes: durationMinutes,
+            color: eventColor,
+            description: eventDescription || null,
+            all_day: eventIsAllDay,
           })
 
-        if (error) {
-          // If error about missing column, retry without all_day
-          if (error.message?.includes('column') || error.code === 'PGRST204') {
-            console.log('Retrying insert without all_day field...')
-            const { error: retryError } = await supabase
-              .from('events')
-              .insert(insertData)
-
-            if (retryError) throw retryError
-          } else {
-            throw error
-          }
-        }
+        if (error) throw error
 
         toast.success('Event created')
       }
@@ -680,6 +677,7 @@ export default function CalendarPage() {
 
       toast.success('Event deleted')
       setShowDayModal(false)
+      setShowEventModal(false)
       await loadUserData()
     } catch (error: any) {
       console.error('Error deleting event:', error)
@@ -689,16 +687,17 @@ export default function CalendarPage() {
 
   // Get all imports grouped by batch
   const getImports = () => {
-    const imports = new Map<string, { fileName: string; count: number; date: string }>()
+    const imports = new Map<string, { fileName: string; count: number; date: string; color?: string }>()
 
     events.forEach(event => {
-      // Only count events that have import tracking fields
       if (event.import_batch_id && event.import_file_name) {
         if (!imports.has(event.import_batch_id)) {
+          const groupName = importGroupNames.get(event.import_batch_id)
           imports.set(event.import_batch_id, {
-            fileName: event.import_file_name,
+            fileName: groupName || event.import_file_name,
             count: 0,
             date: event.imported_at || event.created_at || new Date().toISOString(),
+            color: event.color,
           })
         }
         const imp = imports.get(event.import_batch_id)!
@@ -719,13 +718,25 @@ export default function CalendarPage() {
     try {
       lastLocalUpdate.current = Date.now()
 
-      const { error } = await supabase
+      // Delete events
+      const { error: eventsError } = await supabase
         .from('events')
         .delete()
         .eq('user_id', user.id)
         .eq('import_batch_id', batchId)
 
-      if (error) throw error
+      if (eventsError) throw eventsError
+
+      // Delete import group
+      const { error: groupError } = await supabase
+        .from('import_groups')
+        .delete()
+        .eq('batch_id', batchId)
+
+      if (groupError) {
+        console.error('Error deleting import group:', groupError)
+        // Don't throw, events are already deleted
+      }
 
       toast.success(`Deleted "${fileName}"`)
       await loadUserData()
@@ -735,28 +746,51 @@ export default function CalendarPage() {
     }
   }
 
+  // Update import group
+  const updateImportGroup = async () => {
+    if (!editingImportGroup) return
+
+    const supabase = createClient()
+
+    try {
+      lastLocalUpdate.current = Date.now()
+
+      const { error } = await supabase
+        .from('import_groups')
+        .update({
+          name: editingImportGroup.name,
+          color: editingImportGroup.color,
+        })
+        .eq('batch_id', editingImportGroup.batchId)
+
+      if (error) throw error
+
+      toast.success('Import group updated')
+      setEditingImportGroup(null)
+      await loadUserData()
+    } catch (error: any) {
+      console.error('Error updating import group:', error)
+      toast.error(`Failed to update: ${error?.message || 'Unknown error'}`)
+    }
+  }
+
   // Navigate to previous/next
   const navigateMonth = (direction: 'prev' | 'next') => {
     const newDate = new Date(currentCalendarDate)
 
     if (currentView === 'listDay') {
-      // Day view - move by 1 day
       newDate.setDate(newDate.getDate() + (direction === 'next' ? 1 : -1))
-      setCurrentCalendarDate(newDate)
     } else if (currentView === 'listWeek') {
-      // Week view - move by 1 week
       newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7))
-      setCurrentCalendarDate(newDate)
     } else {
-      // Month view - move by 1 month
       newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
-      setCurrentCalendarDate(newDate)
     }
+
+    setCurrentCalendarDate(newDate)
   }
 
   // Parse ICS date format
   const parseICSDate = (dateStr: string): Date => {
-    // Format: YYYYMMDDTHHMMSSZ (UTC) or YYYYMMDDTHHMMSS (local time)
     const cleanStr = dateStr.replace(/[^0-9]/g, '')
     const isUTC = dateStr.trim().endsWith('Z')
 
@@ -769,10 +803,8 @@ export default function CalendarPage() {
       const second = parseInt(cleanStr.substring(12, 14))
 
       if (isUTC) {
-        // UTC time - use Date.UTC
         return new Date(Date.UTC(year, month, day, hour, minute, second))
       } else {
-        // Local time - create date in local timezone
         return new Date(year, month, day, hour, minute, second)
       }
     }
@@ -783,10 +815,9 @@ export default function CalendarPage() {
   // Export calendar to .ics file
   const exportCalendar = async () => {
     try {
-      // Generate ICS format manually
       let icsContent = `BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//My Dashboard//EN
+PRODID:-//Lokyn//EN
 CALSCALE:GREGORIAN
 METHOD:PUBLISH
 X-WR-CALNAME:Student Calendar
@@ -796,7 +827,7 @@ X-WR-CALDESC:Student Calendar Events
 
       events.forEach(event => {
         const startDate = new Date(event.event_date)
-        const endDate = new Date(startDate.getTime() + (event.duration_minutes || 60) * 60000)
+        const endDate = new Date(event.end_time)
 
         const formatDate = (date: Date) => {
           return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z'
@@ -815,7 +846,6 @@ END:VEVENT
 
       icsContent += `END:VCALENDAR`
 
-      // Create and download file
       const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -852,7 +882,6 @@ END:VEVENT
     try {
       const supabase = createClient()
 
-      // Read file text with better error handling
       let text: string = ''
       try {
         text = await importFile.text()
@@ -869,12 +898,11 @@ END:VEVENT
         return
       }
 
-      // Handle line folding (unfold continuation lines)
+      // Handle line folding
       const unfoldLines = (lines: string[]): string[] => {
         const result: string[] = []
         for (const line of lines) {
           if (line.startsWith(' ') || line.startsWith('\t')) {
-            // Continuation line - append to previous line
             if (result.length > 0) {
               result[result.length - 1] += line.substring(1)
             }
@@ -885,7 +913,7 @@ END:VEVENT
         return result
       }
 
-      // Parse ICS file manually
+      // Parse ICS file
       const lines = unfoldLines(text.split('\n'))
       const importedEvents: any[] = []
       let currentEvent: any = null
@@ -915,14 +943,12 @@ END:VEVENT
                 .replace(/\\\\/g, '\\')
               currentEvent.title = processed
             } else if (line.startsWith('DTSTART')) {
-              // Handle DTSTART with or without parameters
               const colonIndex = line.indexOf(':')
               if (colonIndex !== -1) {
                 const dateStr = line.substring(colonIndex + 1)
                 currentEvent.start = parseICSDate(dateStr)
               }
             } else if (line.startsWith('DTEND')) {
-              // Handle DTEND with or without parameters
               const colonIndex = line.indexOf(':')
               if (colonIndex !== -1) {
                 const dateStr = line.substring(colonIndex + 1)
@@ -940,7 +966,6 @@ END:VEVENT
             }
           }
         } catch (parseError) {
-          // Skip lines with parsing errors
           console.error('Error parsing ICS line', parseError)
         }
       }
@@ -951,29 +976,37 @@ END:VEVENT
         return
       }
 
-      // Convert and import events
-      let importedCount = 0
-      let skippedCount = 0
-      const totalEvents = importedEvents.length
-
-      // Generate unique batch ID for this import
+      // Generate batch ID
       const batchId = crypto.randomUUID()
       const fileName = importFile.name
 
-      // Build array of events to insert (batch insert for better performance)
+      // Check for import group name
+      const finalGroupName = importGroupName.trim() || fileName
+
+      // Create import group
+      if (importGroupName.trim()) {
+        await supabase
+          .from('import_groups')
+          .insert({
+            batch_id: batchId,
+            user_id: user.id,
+            name: importGroupName.trim(),
+            color: importGroupColor,
+          })
+      }
+
+      // Build events to insert
       const eventsToInsert: any[] = []
+      let skippedCount = 0
 
       for (const event of importedEvents) {
-        if (!event.start || !event.title) {
-          continue
-        }
+        if (!event.start || !event.title) continue
 
-        // Check if start is a valid date
         if (!(event.start instanceof Date) || isNaN(event.start.getTime())) {
           continue
         }
 
-        // Check for duplicates (same title, same date/time)
+        // Check for duplicates
         const existingEvent = events.find(e => {
           const existingDate = new Date(e.event_date)
           const newDate = new Date(event.start)
@@ -993,74 +1026,42 @@ END:VEVENT
           ? Math.round((new Date(event.end).getTime() - new Date(event.start).getTime()) / 60000)
           : 60
 
-        // Add to batch insert array
+        // Calculate end time
+        const endTime = event.end ? event.end : new Date(event.start.getTime() + duration * 60000)
+
         eventsToInsert.push({
           user_id: user.id,
           title: event.title,
           event_date: event.start.toISOString(),
-          description: event.description || null,
+          end_time: endTime.toISOString(),
           duration_minutes: duration,
-          color: 'blue',
+          description: event.description || null,
+          color: importGroupColor,
           import_batch_id: batchId,
           import_file_name: fileName,
         })
       }
 
-      // Batch insert all events at once (much faster for large files)
       if (eventsToInsert.length > 0) {
         lastLocalUpdate.current = Date.now()
 
-        let insertError: any = null
-
-        // Try to insert with import tracking (if migration has been run)
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('events')
           .insert(eventsToInsert)
-          .select()
 
-        if (error) {
-          insertError = error
-          console.error('Error importing events (with tracking):', error)
+        if (error) throw error
 
-          // If the error is about missing columns, retry without import tracking
-          if (error.message?.includes('column') || error.code === 'PGRST204') {
-            console.log('Retrying import without tracking fields...')
+        setShowImportModal(false)
+        setImportFile(null)
+        setImportGroupName('')
+        setImportGroupColor('blue')
+        await loadUserData()
 
-            // Remove import tracking fields and retry
-            const eventsToInsertNoTracking = eventsToInsert.map(({
-              import_batch_id,
-              import_file_name,
-              ...event
-            }) => event)
-
-            const { error: retryError } = await supabase
-              .from('events')
-              .insert(eventsToInsertNoTracking)
-              .select()
-
-            if (retryError) {
-              console.error('Error importing events (without tracking):', retryError)
-              toast.error(`Failed to import: ${retryError.message || 'Unknown error'}`)
-              setIsImporting(false)
-              return
-            } else {
-              importedCount = eventsToInsert.length
-            }
-          } else {
-            toast.error(`Failed to import: ${error.message || JSON.stringify(error)}`)
-            setIsImporting(false)
-            return
-          }
-        } else {
-          importedCount = eventsToInsert.length
-        }
+        toast.success(`Imported ${eventsToInsert.length} events${skippedCount > 0 ? ` (${skippedCount} duplicates skipped)` : ''}`)
+      } else {
+        toast.error('No new events to import')
+        setIsImporting(false)
       }
-
-      setShowImportModal(false)
-      setImportFile(null)
-      await loadUserData()
-
-      toast.success(`Imported ${importedCount} events${skippedCount > 0 ? ` (${skippedCount} duplicates skipped)` : ''}`)
     } catch (error: any) {
       console.error('Error importing calendar:', error)
       toast.error(`Failed to import: ${error?.message || 'Invalid file format'}`)
@@ -1079,58 +1080,7 @@ END:VEVENT
     })
   }
 
-  // Format time for display
-  const formatTime = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-    })
-  }
-
-  // Format event time for display (handles all-day events)
-  const formatEventTime = (event: EventsRow) => {
-    if (event.all_day === true) {
-      return 'All day'
-    }
-    // For backwards compatibility: if time is exactly midnight (00:00), treat as all-day
-    const date = new Date(event.event_date)
-    // Check local time (not UTC) for midnight
-    const localHours = date.getHours()
-    const localMinutes = date.getMinutes()
-
-    // Check if it's exactly midnight or very close (for timezone edge cases)
-    if (localHours === 0 && localMinutes === 0) {
-      return 'All day'
-    }
-    return formatTime(event.event_date)
-  }
-
-  // Get events for selected date
-  const getEventsForDate = (date: Date) => {
-    return events.filter(event => {
-      const eventDate = new Date(event.event_date)
-      return eventDate.toDateString() === date.toDateString()
-    }).sort((a, b) => {
-      // Helper function to check if event is all-day
-      const isAllDayEvent = (event: EventsRow) => {
-        return event.all_day === true || (new Date(event.event_date).getHours() === 0 && new Date(event.event_date).getMinutes() === 0)
-      }
-
-      const aIsAllDay = isAllDayEvent(a)
-      const bIsAllDay = isAllDayEvent(b)
-
-      // All-day events first
-      if (aIsAllDay && !bIsAllDay) return -1
-      if (!aIsAllDay && bIsAllDay) return 1
-
-      // Then sort by time
-      return new Date(a.event_date).getTime() - new Date(b.event_date).getTime()
-    })
-  }
-
-  // Get current period title from calendar
+  // Get current period title
   const getCurrentPeriod = () => {
     if (currentView === 'dayGridMonth') {
       return currentCalendarDate.toLocaleDateString('en-US', {
@@ -1138,19 +1088,18 @@ END:VEVENT
         year: 'numeric',
       })
     } else if (currentView === 'listDay') {
-      // Day view - show specific day
       return currentCalendarDate.toLocaleDateString('en-US', {
         weekday: 'long',
         month: 'short',
         day: 'numeric',
       })
     } else {
-      // Week view - show week range
+      // Week view
       const startOfWeek = new Date(currentCalendarDate)
-      startOfWeek.setDate(currentCalendarDate.getDate() - currentCalendarDate.getDay() + 1) // Monday
+      startOfWeek.setDate(currentCalendarDate.getDate() - currentCalendarDate.getDay() + 1)
 
       const endOfWeek = new Date(startOfWeek)
-      endOfWeek.setDate(startOfWeek.getDate() + 6) // Sunday
+      endOfWeek.setDate(startOfWeek.getDate() + 6)
 
       const formatWeekDate = (date: Date) => {
         return date.toLocaleDateString('en-US', {
@@ -1167,77 +1116,62 @@ END:VEVENT
     }
   }
 
-  if (loading) {
+  // Check if we should use time grid (responsive)
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768)
+    }
+
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
+
+  const useTimeGrid = currentView === 'listDay' && !isMobile
+
+  if (!user) {
     return (
       <main className="h-screen bg-background flex items-center justify-center">
-        <p className="text-muted-foreground">Loading...</p>
+        <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-t-transparent"></div>
       </main>
     )
   }
 
-  // Transform events for FullCalendar (if we need it for month view later)
-  const calendarEvents = events.map(event => ({
-    id: event.id,
-    title: event.title,
-    start: event.event_date,
-    backgroundColor: event.color === 'red' ? '#EF4444' : event.color === 'green' ? '#10B981' : '#3B82F6',
-    borderColor: event.color === 'red' ? '#EF4444' : event.color === 'green' ? '#10B981' : '#3B82F6',
-  }))
-
   return (
-    <AccentColorProvider accentColor={accentColor}>
-      <main className="h-screen bg-background flex flex-col overflow-hidden">
+    <main className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-card border-b">
+      <header className="sticky top-0 z-[100] bg-card border-b">
         <div className="container mx-auto px-8 py-4 flex items-center justify-between">
           {/* Left: Logo */}
           <div className="flex items-center gap-2">
-            <CheckCircle className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold">Student Dashboard</h1>
+            <CalendarIcon className="h-6 w-6 text-primary" />
+            <h1 className="text-xl font-bold">Lokyn</h1>
           </div>
 
           {/* Center: Navigation */}
           <nav className="hidden md:flex items-center gap-1">
             <Link href="/dashboard">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-2"
-                aria-label="Go to Tasks"
-              >
+              <Button variant="ghost" size="sm" className="gap-2">
                 <CheckCircle className="h-4 w-4" />
                 Tasks
               </Button>
             </Link>
             <Link href="/calendar">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-2"
-                aria-label="Go to Calendar"
-              >
+              <Button variant="default" size="sm" className="gap-2">
                 <CalendarIcon className="h-4 w-4" />
                 Calendar
               </Button>
             </Link>
             <Link href="/focus">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-2"
-                aria-label="Go to Focus"
-              >
+              <Button variant="ghost" size="sm" className="gap-2">
                 <Timer className="h-4 w-4" />
                 Focus
               </Button>
             </Link>
             <Link href="/stats">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-2"
-                aria-label="Go to Stats"
-              >
+              <Button variant="ghost" size="sm" className="gap-2">
                 <BarChart3 className="h-4 w-4" />
                 Stats
               </Button>
@@ -1245,54 +1179,7 @@ END:VEVENT
           </nav>
 
           {/* Right: User Menu */}
-          <div className="relative" ref={userMenuRef}>
-            <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent transition-colors"
-            >
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium">{userProfile?.full_name || user?.user_metadata?.full_name || 'User'}</p>
-                <p className="text-xs text-muted-foreground">{user?.email?.split('@')[0]}</p>
-              </div>
-              <div className={`w-9 h-9 rounded-full ${getAvatarColor(userProfile?.full_name || user?.email || 'User')} flex items-center justify-center text-sm font-semibold text-white shadow-sm`}>
-                {getInitials(userProfile?.full_name || user?.email || 'User')}
-              </div>
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            </button>
-
-            {/* Dropdown Menu */}
-            {showUserMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-card rounded-lg border border-border shadow-lg py-1 z-[9999]">
-                <div className="px-3 py-2 border-b border-border">
-                  <p className="text-xs font-medium text-muted-foreground">Signed in as</p>
-                  <p className="text-sm font-medium truncate">{user?.email}</p>
-                </div>
-                <Link href="/settings">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-start gap-2 px-3"
-                    onClick={() => setShowUserMenu(false)}
-                  >
-                    <Settings className="h-4 w-4" />
-                    Settings
-                  </Button>
-                </Link>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start gap-2 px-3 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  onClick={() => {
-                    handleSignOut()
-                    setShowUserMenu(false)
-                  }}
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sign Out
-                </Button>
-              </div>
-            )}
-          </div>
+          <UserProfileMenu user={user} userProfile={userProfile} />
         </div>
       </header>
 
@@ -1307,7 +1194,6 @@ END:VEVENT
                 variant="ghost"
                 size="icon"
                 onClick={() => navigateMonth('prev')}
-                aria-label="Previous"
                 className="h-8 w-8"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -1319,18 +1205,12 @@ END:VEVENT
                 variant="ghost"
                 size="icon"
                 onClick={() => navigateMonth('next')}
-                aria-label="Next"
                 className="h-8 w-8"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={goToToday}
-              className="h-8"
-            >
+            <Button variant="outline" size="sm" onClick={goToToday} className="h-8">
               Today
             </Button>
           </div>
@@ -1342,7 +1222,7 @@ END:VEVENT
               <Button
                 variant={currentView === 'listDay' ? 'default' : 'ghost'}
                 size="sm"
-                onClick={() => switchView('listDay')}
+                onClick={() => setCurrentView('listDay')}
                 className="h-8 px-4 min-w-[70px]"
               >
                 Day
@@ -1350,7 +1230,7 @@ END:VEVENT
               <Button
                 variant={currentView === 'listWeek' ? 'default' : 'ghost'}
                 size="sm"
-                onClick={() => switchView('listWeek')}
+                onClick={() => setCurrentView('listWeek')}
                 className="h-8 px-4 min-w-[70px]"
               >
                 Week
@@ -1358,7 +1238,7 @@ END:VEVENT
               <Button
                 variant={currentView === 'dayGridMonth' ? 'default' : 'ghost'}
                 size="sm"
-                onClick={() => switchView('dayGridMonth')}
+                onClick={() => setCurrentView('dayGridMonth')}
                 className="h-8 px-4 min-w-[70px]"
               >
                 Month
@@ -1381,7 +1261,6 @@ END:VEVENT
                 <ChevronDown className="h-3 w-3 opacity-50" />
               </Button>
 
-              {/* Dropdown Menu */}
               {showActionsMenu && (
                 <div className="absolute right-0 mt-2 w-48 bg-card rounded-lg border border-border shadow-lg py-1 z-[9999]">
                   <Button
@@ -1428,10 +1307,23 @@ END:VEVENT
 
         {/* Calendar Views */}
         <div className="bg-card rounded-xl border border-border shadow-sm flex-1 min-h-0 overflow-auto p-4">
-          {currentView === 'listDay' && (
+          {useTimeGrid ? (
+            <TimeGridDayView
+              events={events}
+              date={currentCalendarDate}
+              importGroupNames={importGroupNames}
+              onDateClick={(time) => handleDateClick(currentCalendarDate, time)}
+              onEventClick={(event) => {
+                setSelectedDate(new Date(event.event_date))
+                setShowDayModal(false)
+                openEditEventModal(event)
+              }}
+            />
+          ) : currentView === 'listDay' ? (
             <DayView
               events={events}
               date={currentCalendarDate}
+              importGroupNames={importGroupNames}
               onDateClick={() => handleDateClick(currentCalendarDate)}
               onEventClick={(event) => {
                 setSelectedDate(new Date(event.event_date))
@@ -1439,12 +1331,11 @@ END:VEVENT
                 openEditEventModal(event)
               }}
             />
-          )}
-
-          {currentView === 'listWeek' && (
+          ) : currentView === 'listWeek' ? (
             <WeekView
               events={events}
               currentCalendarDate={currentCalendarDate}
+              importGroupNames={importGroupNames}
               onDateClick={handleDateClick}
               onEventClick={(event) => {
                 setSelectedDate(new Date(event.event_date))
@@ -1452,12 +1343,11 @@ END:VEVENT
                 openEditEventModal(event)
               }}
             />
-          )}
-
-          {currentView === 'dayGridMonth' && (
+          ) : (
             <MonthView
               events={events}
               currentCalendarDate={currentCalendarDate}
+              importGroupNames={importGroupNames}
               onDateClick={handleDateClick}
               onEventClick={(event) => {
                 setSelectedDate(new Date(event.event_date))
@@ -1478,61 +1368,34 @@ END:VEVENT
               <h3 className="text-lg font-semibold">
                 Events for {formatDate(selectedDate)}
               </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowDayModal(false)}
-                aria-label="Close"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setShowDayModal(false)}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
 
             {/* Events List */}
             <div className="flex-1 overflow-y-auto p-4">
-              {getEventsForDate(selectedDate).length === 0 ? (
+              {getSortedEventsForDate(events, selectedDate).length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">
                   No events scheduled
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {getEventsForDate(selectedDate).map((event) => (
-                    <div
-                      key={event.id}
-                      className="flex items-start justify-between p-3 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
-                    >
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className={`w-3 h-3 rounded-full ${colorDotMap[event.color as EventColor]} mt-1 flex-shrink-0`} />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm truncate">{event.title}</p>
-                          <p className="text-xs text-muted-foreground">{formatEventTime(event)}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setShowDayModal(false)
-                            openEditEventModal(event)
-                          }}
-                          className="h-8 w-8 p-0"
-                          aria-label="Edit event"
-                        >
-                          ✏️
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteEvent(event.id)}
-                          className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                          aria-label="Delete event"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
+                  {getSortedEventsForDate(events, selectedDate).map((event) => {
+                    const importGroupName = event.import_batch_id ? importGroupNames.get(event.import_batch_id) : undefined
+                    return (
+                      <EventCard
+                        key={event.id}
+                        event={event}
+                        variant="full"
+                        importGroupName={importGroupName}
+                        onClick={() => {
+                          setShowDayModal(false)
+                          openEditEventModal(event)
+                        }}
+                      />
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -1563,91 +1426,36 @@ END:VEVENT
               <h3 className="text-lg font-semibold">
                 {editingEvent ? 'Edit Event' : 'New Event'}
               </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowEventModal(false)}
-                aria-label="Close"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setShowEventModal(false)}>
                 <X className="h-4 w-4" />
               </Button>
             </div>
 
             {/* Form */}
-            <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-2">Title</label>
-                <input
-                  type="text"
-                  value={eventTitle}
-                  onChange={(e) => setEventTitle(e.target.value)}
-                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
-                  placeholder="Event title"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Date</label>
-                <div className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm text-muted-foreground">
-                  {selectedDate ? formatDate(selectedDate) : ''}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="all-day"
-                  checked={isAllDay}
-                  onChange={(e) => setIsAllDay(e.target.checked)}
-                  className="rounded border-input"
-                />
-                <label htmlFor="all-day" className="text-sm font-medium cursor-pointer">
-                  All day
-                </label>
-              </div>
-
-              {!isAllDay && (
-                <div>
-                  <label className="block text-sm font-medium mb-2">Time</label>
-                  <input
-                    type="time"
-                    value={eventTime}
-                    onChange={(e) => setEventTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
-                  />
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Color</label>
-                <div className="flex gap-2">
-                  {(['blue', 'red', 'green'] as EventColor[]).map((color) => (
-                    <button
-                      key={color}
-                      type="button"
-                      onClick={() => setEventColor(color)}
-                      className={`w-10 h-10 rounded-lg border-2 transition-all ${
-                        eventColor === color
-                          ? `${colorMap[color]} border-foreground scale-110`
-                          : `${colorMap[color]} border-transparent opacity-60 hover:opacity-100`
-                      }`}
-                      aria-label={`Select ${color} color`}
-                    />
-                  ))}
-                </div>
-              </div>
+            <div className="p-6">
+              <EventForm
+                title={eventTitle}
+                date={selectedDate}
+                startTime={eventStartTime}
+                endTime={eventEndTime}
+                isAllDay={eventIsAllDay}
+                color={eventColor}
+                description={eventDescription}
+                onTitleChange={setEventTitle}
+                onDateChange={setSelectedDate}
+                onStartTimeChange={setEventStartTime}
+                onEndTimeChange={setEventEndTime}
+                onAllDayChange={setEventIsAllDay}
+                onColorChange={setEventColor}
+                onDescriptionChange={setEventDescription}
+              />
             </div>
 
             {/* Footer */}
             <div className="flex gap-2 p-4 border-t">
               {editingEvent ? (
                 <>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setShowEventModal(false)}
-                    className="flex-1"
-                  >
+                  <Button variant="ghost" onClick={() => setShowEventModal(false)} className="flex-1">
                     Cancel
                   </Button>
                   <Button
@@ -1655,33 +1463,22 @@ END:VEVENT
                     onClick={() => {
                       if (editingEvent) {
                         deleteEvent(editingEvent.id)
-                        setShowEventModal(false)
                       }
                     }}
                     className="flex-1"
                   >
                     Delete
                   </Button>
-                  <Button
-                    onClick={saveEvent}
-                    className="flex-1"
-                  >
+                  <Button onClick={saveEvent} className="flex-1">
                     Save
                   </Button>
                 </>
               ) : (
                 <>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setShowEventModal(false)}
-                    className="flex-1"
-                  >
+                  <Button variant="ghost" onClick={() => setShowEventModal(false)} className="flex-1">
                     Cancel
                   </Button>
-                  <Button
-                    onClick={saveEvent}
-                    className="flex-1"
-                  >
+                  <Button onClick={saveEvent} className="flex-1">
                     Save
                   </Button>
                 </>
@@ -1707,8 +1504,9 @@ END:VEVENT
                 onClick={() => {
                   setShowImportModal(false)
                   setImportFile(null)
+                  setImportGroupName('')
+                  setImportGroupColor('blue')
                 }}
-                aria-label="Close"
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -1721,7 +1519,7 @@ END:VEVENT
               </p>
 
               <div
-                className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary hover:bg-accent/50 transition-colors"
+                className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary hover:bg-primary hover:text-primary-foreground transition-colors"
                 onClick={() => {
                   const input = document.getElementById('ics-file-input') as HTMLInputElement
                   input?.click()
@@ -1758,18 +1556,52 @@ END:VEVENT
                 )}
               </div>
 
-              {importFile && (
-                <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
-                  <input
-                    type="checkbox"
-                    id="skip-duplicates"
-                    checked
-                    disabled
-                    className="rounded"
-                  />
-                  <label htmlFor="skip-duplicates" className="text-sm">
-                    Skip duplicate events
-                  </label>
+              {/* Import Group Name */}
+              <div>
+                <label className="block text-sm font-medium mb-2">
+                  Import Group Name <span className="text-muted-foreground">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={importGroupName}
+                  onChange={(e) => setImportGroupName(e.target.value)}
+                  className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                  placeholder="e.g., School Timetable, Work Schedule"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Name this import group to organize your calendar
+                </p>
+              </div>
+
+              {/* Import Group Color */}
+              {importGroupName && (
+                <div>
+                  <label className="block text-sm font-medium mb-2">Group Color</label>
+                  <div className="flex gap-2">
+                    {(['blue', 'red', 'green', 'yellow', 'purple', 'orange', 'pink'] as EventColor[]).map((color) => {
+                      const colorClasses: Record<EventColor, string> = {
+                        blue: 'bg-blue-500',
+                        red: 'bg-red-500',
+                        green: 'bg-green-500',
+                        yellow: 'bg-yellow-500',
+                        purple: 'bg-purple-500',
+                        orange: 'bg-orange-500',
+                        pink: 'bg-pink-500',
+                      }
+                      return (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => setImportGroupColor(color)}
+                          className={`w-10 h-10 rounded-lg border-2 transition-all ${
+                            importGroupColor === color
+                              ? `${colorClasses[color]} border-foreground scale-110`
+                              : `${colorClasses[color]} border-transparent opacity-60 hover:opacity-100`
+                          }`}
+                        />
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </div>
@@ -1781,6 +1613,8 @@ END:VEVENT
                 onClick={() => {
                   setShowImportModal(false)
                   setImportFile(null)
+                  setImportGroupName('')
+                  setImportGroupColor('blue')
                 }}
                 disabled={isImporting}
                 className="flex-1"
@@ -1812,8 +1646,10 @@ END:VEVENT
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowManageImports(false)}
-                aria-label="Close"
+                onClick={() => {
+                  setShowManageImports(false)
+                  setEditingImportGroup(null)
+                }}
               >
                 <X className="h-4 w-4" />
               </Button>
@@ -1821,7 +1657,60 @@ END:VEVENT
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6">
-              {getImports().length === 0 ? (
+              {editingImportGroup ? (
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Edit Import Group</h4>
+                    <input
+                      type="text"
+                      value={editingImportGroup.name}
+                      onChange={(e) => setEditingImportGroup({...editingImportGroup, name: e.target.value})}
+                      className="w-full px-3 py-2 rounded-md border border-input bg-background text-sm"
+                      placeholder="Group name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Color</label>
+                    <div className="flex gap-2">
+                      {(['blue', 'red', 'green', 'yellow', 'purple', 'orange', 'pink'] as EventColor[]).map((color) => {
+                        const colorClasses: Record<EventColor, string> = {
+                          blue: 'bg-blue-500',
+                          red: 'bg-red-500',
+                          green: 'bg-green-500',
+                          yellow: 'bg-yellow-500',
+                          purple: 'bg-purple-500',
+                          orange: 'bg-orange-500',
+                          pink: 'bg-pink-500',
+                        }
+                        return (
+                          <button
+                            key={color}
+                            type="button"
+                            onClick={() => setEditingImportGroup({...editingImportGroup, color})}
+                            className={`w-10 h-10 rounded-lg border-2 transition-all ${
+                              editingImportGroup.color === color
+                                ? `${colorClasses[color]} border-foreground scale-110`
+                                : `${colorClasses[color]} border-transparent opacity-60 hover:opacity-100`
+                            }`}
+                          />
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button onClick={updateImportGroup} className="flex-1">
+                      Save Changes
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setEditingImportGroup(null)}
+                      className="flex-1"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : getImports().length === 0 ? (
                 <div className="text-center py-12">
                   <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                   <p className="text-muted-foreground">No imports found</p>
@@ -1834,11 +1723,27 @@ END:VEVENT
                   {getImports().map((imp) => (
                     <div
                       key={imp.batchId}
-                      className="flex items-center justify-between p-4 rounded-lg border border-border bg-card hover:bg-accent/50 transition-colors"
+                      className="flex items-center justify-between p-4 rounded-lg border border-border bg-card hover:bg-primary hover:text-primary-foreground transition-colors"
                     >
                       <div className="flex items-start gap-4 flex-1">
-                        <div className="h-10 w-10 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                          <FileText className="h-5 w-5 text-blue-500" />
+                        <div className={`h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          imp.color === 'red' ? 'bg-red-500/10' :
+                          imp.color === 'green' ? 'bg-green-500/10' :
+                          imp.color === 'yellow' ? 'bg-yellow-500/10' :
+                          imp.color === 'purple' ? 'bg-purple-500/10' :
+                          imp.color === 'orange' ? 'bg-orange-500/10' :
+                          imp.color === 'pink' ? 'bg-pink-500/10' :
+                          'bg-blue-500/10'
+                        }`}>
+                          <FileText className={`h-5 w-5 ${
+                            imp.color === 'red' ? 'text-red-500' :
+                            imp.color === 'green' ? 'text-green-500' :
+                            imp.color === 'yellow' ? 'text-yellow-500' :
+                            imp.color === 'purple' ? 'text-purple-500' :
+                            imp.color === 'orange' ? 'text-orange-500' :
+                            imp.color === 'pink' ? 'text-pink-500' :
+                            'text-blue-500'
+                          }`} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm truncate">{imp.fileName}</p>
@@ -1853,15 +1758,28 @@ END:VEVENT
                           </div>
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteImportBatch(imp.batchId, imp.fileName)}
-                        className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                        aria-label="Delete import"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingImportGroup({
+                            batchId: imp.batchId,
+                            name: imp.fileName,
+                            color: (imp.color || 'blue') as EventColor,
+                          })}
+                          className="h-8 w-8 p-0"
+                        >
+                          ✏️
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteImportBatch(imp.batchId, imp.fileName)}
+                          className="h-8 w-8 p-0 text-destructive hover:text-destructive-foreground hover:bg-destructive"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1878,6 +1796,5 @@ END:VEVENT
         </div>
       )}
     </main>
-    </AccentColorProvider>
   )
 }

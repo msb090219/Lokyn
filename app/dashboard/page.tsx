@@ -1,13 +1,16 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, Plus, ChevronDown, ChevronRight, Trash2, GripVertical, CheckCircle, Calendar, Settings, User, Timer, BarChart3 } from 'lucide-react'
+import { Plus, ChevronDown, ChevronRight, Trash2, GripVertical, CheckCircle, Calendar, Timer, BarChart3, Flag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { UserProfileMenu } from '@/components/user-profile-menu'
 import { toast } from 'sonner'
 import type { SectionsRow, TasksRow } from '@/lib/types'
+import { cn } from '@/lib/utils'
 import {
   DndContext,
   DragEndEvent,
@@ -27,17 +30,26 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AccentColorProvider } from '@/components/providers/theme-provider'
 
 type SectionWithTasks = SectionsRow & {
   tasks: TasksRow[]
 }
 
-// Helper to sort tasks: incomplete first, completed at bottom
+type TaskPriority = 'none' | 'low' | 'medium' | 'high'
+
+// Helper to sort tasks: incomplete first, completed at bottom, then by priority
 const sortTasks = (tasks: TasksRow[]): TasksRow[] => {
+  const priorityWeight = { high: 0, medium: 1, low: 2, none: 3 }
+
   return [...tasks].sort((a, b) => {
-    // Both incomplete or both completed: maintain original order (by position)
+    // Both incomplete or both completed: sort by priority
     if (a.completed === b.completed) {
+      const aPriority = priorityWeight[a.priority || 'none']
+      const bPriority = priorityWeight[b.priority || 'none']
+      if (aPriority !== bPriority) {
+        return aPriority - bPriority
+      }
+      // Same priority: maintain original order (by position)
       return a.position - b.position
     }
     // Incomplete tasks (completed: false) come first
@@ -45,45 +57,206 @@ const sortTasks = (tasks: TasksRow[]): TasksRow[] => {
   })
 }
 
-// Helper to get initials from name
-const getInitials = (name: string) => {
-  const parts = name.trim().split(' ')
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+// Priority Flag Component
+function PriorityFlag({
+  priority,
+  onPriorityChange,
+  disabled = false,
+  className = '',
+}: {
+  priority: TaskPriority
+  onPriorityChange: (priority: TaskPriority) => void
+  disabled?: boolean
+  className?: string
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 })
+
+  const updateDropdownPosition = useCallback(() => {
+    if (buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setDropdownPosition({
+        top: rect.bottom + 4,
+        left: rect.left,
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isOpen) {
+      updateDropdownPosition()
+    }
+  }, [isOpen, updateDropdownPosition])
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (buttonRef.current && !buttonRef.current.contains(event.target as Node)) {
+        setIsOpen(false)
+      }
+    }
+
+    function handleScroll() {
+      if (isOpen) {
+        setIsOpen(false)
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      window.addEventListener('scroll', handleScroll, true)
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside)
+        window.removeEventListener('scroll', handleScroll, true)
+      }
+    }
+  }, [isOpen])
+
+  const priorityConfig = {
+    none: { color: 'text-muted-foreground hover:text-foreground', label: 'No Priority' },
+    low: { color: 'text-blue-500 hover:text-blue-600', label: 'Low Priority' },
+    medium: { color: 'text-yellow-500 hover:text-yellow-600', label: 'Medium Priority' },
+    high: { color: 'text-red-500 hover:text-red-600', label: 'High Priority' },
   }
-  return parts[0]?.substring(0, 2).toUpperCase() || 'US'
+
+  const config = priorityConfig[priority]
+
+  return (
+    <div className={`relative flex-shrink-0 ${className}`}>
+      <button
+        ref={buttonRef}
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        className={`transition-colors p-1 rounded ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:scale-110'} ${config.color}`}
+        disabled={disabled}
+        aria-label={config.label}
+      >
+        <Flag className={`h-4 w-4 ${priority !== 'none' ? 'fill-current' : ''}`} />
+      </button>
+
+      {isOpen && !disabled &&
+        typeof document !== 'undefined' &&
+        document.body && (
+          createPortal(
+            <div
+              className="fixed bg-card border border-border rounded-lg shadow-lg z-[9999] p-1 min-w-[140px]"
+              style={{
+                top: `${dropdownPosition.top}px`,
+                left: `${dropdownPosition.left}px`,
+              }}
+            >
+              {(
+                [
+                  { value: 'high' as const, label: 'High', color: 'text-red-500' },
+                  { value: 'medium' as const, label: 'Medium', color: 'text-yellow-500' },
+                  { value: 'low' as const, label: 'Low', color: 'text-blue-500' },
+                  { value: 'none' as const, label: 'None', color: 'text-muted-foreground' },
+                ]
+              ).map(({ value, label, color }) => (
+                <button
+                  key={value}
+                  onClick={() => {
+                    onPriorityChange(value)
+                    setIsOpen(false)
+                  }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-body-sm text-left hover:bg-primary hover:text-primary-foreground transition-colors ${
+                    priority === value ? 'bg-accent' : ''
+                  }`}
+                >
+                  <Flag className={`h-4 w-4 ${color} ${value !== 'none' ? 'fill-current' : ''}`} />
+                  <span className={color}>{label}</span>
+                </button>
+              ))}
+            </div>,
+            document.body
+          )
+        )}
+    </div>
+  )
 }
 
-// Helper to generate avatar color
-const getAvatarColor = (name: string) => {
-  const colors = [
-    'bg-blue-500',
-    'bg-purple-500',
-    'bg-pink-500',
-    'bg-indigo-500',
-    'bg-cyan-500',
-    'bg-teal-500',
-    'bg-orange-500',
-  ]
-  const index = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  return colors[index % colors.length]
+// Droppable Column Component
+function DroppableColumn({
+  id,
+  label,
+  children,
+  onCreateSection,
+}: {
+  id: 'col-today' | 'col-backlog'
+  label: string
+  children: React.ReactNode
+  onCreateSection: (columnId: 'col-today' | 'col-backlog') => void
+}) {
+  const { setNodeRef } = useDroppable({ id })
+
+  return (
+    <section className="flex-1 flex flex-col min-h-0">
+      <h2 className="text-overline uppercase tracking-wider text-muted-foreground mb-4">
+        {label}
+      </h2>
+      <div
+        ref={setNodeRef}
+        className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar min-h-0"
+      >
+        <SortableContext
+          items={Array.isArray(children)
+            ? React.Children.toArray(children).map((child: any) => child?.key?.toString() || '')
+            : []
+          }
+          strategy={verticalListSortingStrategy}
+        >
+          {children}
+        </SortableContext>
+      </div>
+      <Button
+        onClick={() => onCreateSection(id)}
+        variant="ghost"
+        className="w-full mt-4 border-2 border-dashed border-muted-foreground/30 hover:border-primary hover:bg-primary text-muted-foreground hover:text-primary-foreground transition-all"
+      >
+        <Plus className="mr-2 h-4 w-4" />
+        Add Section
+      </Button>
+    </section>
+  )
 }
+
+// Utility: Group sections by their highest task priority - COMMENTED OUT - priority view disabled
+/*
+function groupSectionsByPriority(sections: SectionWithTasks[]): Record<'high' | 'medium' | 'low' | 'none', SectionWithTasks[]> {
+  const groups: Record<'high' | 'medium' | 'low' | 'none', SectionWithTasks[]> = {
+    high: [],
+    medium: [],
+    low: [],
+    none: [],
+  }
+
+  sections.forEach(section => {
+    const priorities = section.tasks.map(t => t.priority || 'none')
+    const priorityWeight = { high: 0, medium: 1, low: 2, none: 3 }
+
+    // Get highest priority (lowest weight) in section
+    const highestPriority = priorities.reduce((highest, current) => {
+      return priorityWeight[current] < priorityWeight[highest] ? current : highest
+    }, 'none' as TaskPriority)
+
+    groups[highestPriority].push(section)
+  })
+
+  return groups
+}
+*/
 
 export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [userProfile, setUserProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [accentColor, setAccentColor] = useState<string>('#3B82F6')
+  const [loading, setLoading] = useState(false)
   const [todaySections, setTodaySections] = useState<SectionWithTasks[]>([])
   const [backlogSections, setBacklogSections] = useState<SectionWithTasks[]>([])
   const [activeSection, setActiveSection] = useState<SectionWithTasks | null>(null)
   const [activeTask, setActiveTask] = useState<TasksRow | null>(null)
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [forceOpenSectionId, setForceOpenSectionId] = useState<string | null>(null)
-  const [showUserMenu, setShowUserMenu] = useState(false)
   const [activeSessionTaskId, setActiveSessionTaskId] = useState<string | null>(null)
-  const userMenuRef = useRef<HTMLDivElement>(null)
   const lastLocalUpdate = useRef<number>(0)
 
   const sensors = useSensors(
@@ -123,18 +296,6 @@ export default function DashboardPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
-        setShowUserMenu(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
   const loadUserData = async (): Promise<void> => {
     try {
       const supabase = createClient()
@@ -147,27 +308,29 @@ export default function DashboardPage() {
       }
       setUser(session.user)
 
-      // Load user profile
-      const { data: profile } = await supabase
-        .from('user_preferences')
-        .select('*')
-        .eq('user_id', session.user.id)
-        .single()
+      // Load sections with tasks in parallel with profile
+      const [sectionsResult, profileResult] = await Promise.all([
+        supabase
+          .from('sections')
+          .select(`
+            *,
+            tasks (*)
+          `)
+          .eq('user_id', session.user.id)
+          .order('position', { ascending: true }),
+        supabase
+          .from('user_preferences')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .single()
+      ])
+
+      const { data: sections, error } = sectionsResult
+      const { data: profile } = profileResult
 
       if (profile) {
         setUserProfile(profile)
-        setAccentColor(profile.accent_color || '#3B82F6')
       }
-
-      // Load sections with tasks
-      const { data: sections, error } = await supabase
-        .from('sections')
-        .select(`
-          *,
-          tasks (*)
-        `)
-        .eq('user_id', session.user.id)
-        .order('position', { ascending: true })
 
       if (error) throw error
 
@@ -234,13 +397,6 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleSignOut = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/auth/login')
-    toast.success('Signed out successfully')
   }
 
   const createSection = async (columnId: 'col-today' | 'col-backlog') => {
@@ -329,6 +485,11 @@ export default function DashboardPage() {
     lastLocalUpdate.current = Date.now()
   }
 
+  const continueCreatingTask = async (sectionId: string) => {
+    // Simply call createTask - it will create a new empty task and set it as editing
+    await createTask(sectionId)
+  }
+
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event
     const allSections = [...todaySections, ...backlogSections]
@@ -363,6 +524,67 @@ export default function DashboardPage() {
     const isBacklogSection = backlogSections.some(s => s.id === activeId)
 
     if (isTodaySection || isBacklogSection) {
+      const section = isTodaySection
+        ? todaySections.find(s => s.id === activeId)
+        : backlogSections.find(s => s.id === activeId)
+
+      if (!section) return
+
+      // Check if dropping on a different column (today vs backlog)
+      const targetColumnId = overId === 'col-today' || overId === 'col-backlog'
+        ? overId
+        : null
+
+      // Also check if dropping on another section in a different column
+      let targetSectionColumn = null
+      const todayTarget = todaySections.find(s => s.id === overId)
+      const backlogTarget = backlogSections.find(s => s.id === overId)
+
+      if (todayTarget) targetSectionColumn = 'col-today'
+      if (backlogTarget) targetSectionColumn = 'col-backlog'
+
+      const movingToDifferentColumn = targetColumnId || targetSectionColumn
+
+      if (movingToDifferentColumn && movingToDifferentColumn !== section.column_id) {
+        // Moving section to different column
+        const newColumnId = movingToDifferentColumn
+
+        // Update UI immediately
+        const updatedSection = { ...section, column_id: newColumnId as 'col-today' | 'col-backlog' }
+
+        // Remove from source column
+        if (section.column_id === 'col-today') {
+          setTodaySections(prev => prev.filter(s => s.id !== activeId))
+        } else {
+          setBacklogSections(prev => prev.filter(s => s.id !== activeId))
+        }
+
+        // Add to target column at the end
+        if (newColumnId === 'col-today') {
+          setTodaySections(prev => [...prev, { ...updatedSection, position: prev.length }])
+        } else {
+          setBacklogSections(prev => [...prev, { ...updatedSection, position: prev.length }])
+        }
+
+        // Sync with database
+        try {
+          const supabase = createClient()
+          const { error } = await supabase
+            .from('sections')
+            .update({ column_id: newColumnId })
+            .eq('id', activeId)
+
+          if (error) throw error
+
+          toast.success(`Section moved to "${newColumnId === 'col-today' ? 'Today' : 'Backlog'}"`)
+          await loadUserData()
+        } catch {
+          toast.error('Failed to move section')
+          await loadUserData()
+        }
+        return
+      }
+
       // Section reordering (within same column only)
       const sections = isTodaySection ? [...todaySections] : [...backlogSections]
       const oldIndex = sections.findIndex(s => s.id === activeId)
@@ -508,24 +730,23 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) {
+  if (!user) {
     return (
       <main className="min-h-screen bg-background flex items-center justify-center">
-        <p className="text-muted-foreground">Loading...</p>
+        <div className="animate-spin rounded-full h-10 w-10 border-4 border-primary border-t-transparent"></div>
       </main>
     )
   }
 
   return (
-    <AccentColorProvider accentColor={accentColor}>
-      <main className="h-screen bg-background flex flex-col overflow-hidden">
+    <main className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-card border-b">
+      <header className="sticky top-0 z-[100] bg-card border-b">
         <div className="container mx-auto px-8 py-4 flex items-center justify-between">
           {/* Left: Logo */}
           <div className="flex items-center gap-2">
             <CheckCircle className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold">My Dashboard</h1>
+            <h1 className="text-h6">Lokyn</h1>
           </div>
 
           {/* Center: Navigation */}
@@ -577,158 +798,188 @@ export default function DashboardPage() {
           </nav>
 
           {/* Right: User Menu */}
-          <div className="relative" ref={userMenuRef}>
-            <button
-              onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent transition-colors"
-            >
-              <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium">{userProfile?.full_name || user?.user_metadata?.full_name || 'User'}</p>
-                <p className="text-xs text-muted-foreground">{user?.email?.split('@')[0]}</p>
-              </div>
-              <div className={`w-9 h-9 rounded-full ${getAvatarColor(userProfile?.full_name || user?.email || 'User')} flex items-center justify-center text-sm font-semibold text-white shadow-sm`}>
-                {getInitials(userProfile?.full_name || user?.email || 'User')}
-              </div>
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            </button>
-
-            {/* Dropdown Menu */}
-            {showUserMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-card rounded-lg border border-border shadow-lg py-1 z-[9999]">
-                <div className="px-3 py-2 border-b border-border">
-                  <p className="text-xs font-medium text-muted-foreground">Signed in as</p>
-                  <p className="text-sm font-medium truncate">{user?.email}</p>
-                </div>
-                <Link href="/settings">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-start gap-2 px-3"
-                    onClick={() => setShowUserMenu(false)}
-                  >
-                    <Settings className="h-4 w-4" />
-                    Settings
-                  </Button>
-                </Link>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start gap-2 px-3 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  onClick={() => {
-                    handleSignOut()
-                    setShowUserMenu(false)
-                  }}
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sign Out
-                </Button>
-              </div>
-            )}
-          </div>
+          <UserProfileMenu user={user} userProfile={userProfile} />
         </div>
       </header>
 
       {/* Main Content */}
       <div className="container mx-auto px-8 py-6 flex-1 flex flex-col overflow-hidden">
+        {/* View Mode Toggle - COMMENTED OUT
+        <div className="flex items-center mb-4">
+          <ViewModeToggle viewMode={viewMode} onViewModeChange={(mode) => {
+            setViewMode(mode)
+            localStorage.setItem('dashboard-view-mode', mode)
+          }} />
+        </div>
+        */}
+
         <DndContext
           sensors={sensors}
           collisionDetection={pointerWithin}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="flex gap-6 flex-1 min-h-0">
-            {/* To Do Today Column */}
-            <section className="flex-1 flex flex-col min-h-0">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
-                To Do Today
-              </h2>
-              <div className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar min-h-0">
-                <SortableContext
-                  items={todaySections.map(s => s.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {todaySections.map((section) => (
-                    <DraggableSection
-                      key={section.id}
-                      section={section}
-                      onCreateTask={createTask}
-                      onUpdate={loadUserData}
-                      onLocalUpdate={(timestamp) => lastLocalUpdate.current = timestamp}
-                      editingTaskId={editingTaskId}
-                      onClearEditingTask={() => {
-                        setEditingTaskId(null)
-                        setForceOpenSectionId(null)
-                      }}
-                      forceOpen={forceOpenSectionId === section.id}
-                      activeSessionTaskId={activeSessionTaskId}
-                    />
-                  ))}
-                </SortableContext>
-                {todaySections.length === 0 && (
-                  <div className="text-center text-muted-foreground py-12">
-                    <p>No sections yet. Create one to get started!</p>
+          {/* Always show normal view - priority view commented out */}
+          {/* {viewMode === 'normal' ? ( */}
+            <>
+              {/* Content Grid - Simple 2-column layout (50/50) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
+                {/* Frontlog Half */}
+                <div className="flex flex-col min-h-0">
+                  {/* Frontlog Header */}
+                  <div className="flex items-center justify-between pb-6">
+                    <h2 className="text-h3 font-semibold text-foreground">Frontlog</h2>
                   </div>
-                )}
-              </div>
-              <Button
-                onClick={() => createSection('col-today')}
-                variant="ghost"
-                className="w-full mt-4 border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/5 text-muted-foreground hover:text-foreground transition-all"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add Section
-              </Button>
-            </section>
 
-            {/* Backlog Column */}
-            <section className="flex-1 flex flex-col min-h-0">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
-                Backlog
-              </h2>
-              <div className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar min-h-0">
-                <SortableContext
-                  items={backlogSections.map(s => s.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {backlogSections.map((section) => (
-                    <DraggableSection
-                      key={section.id}
-                      section={section}
-                      onCreateTask={createTask}
-                      onUpdate={loadUserData}
-                      onLocalUpdate={(timestamp) => lastLocalUpdate.current = timestamp}
-                      editingTaskId={editingTaskId}
-                      onClearEditingTask={() => {
-                        setEditingTaskId(null)
-                        setForceOpenSectionId(null)
-                      }}
-                      forceOpen={forceOpenSectionId === section.id}
-                      activeSessionTaskId={activeSessionTaskId}
-                    />
-                  ))}
-                </SortableContext>
-                {backlogSections.length === 0 && (
-                  <div className="text-center text-muted-foreground py-12">
-                    <p>No sections yet. Create one to get started!</p>
+                  {/* Frontlog Content */}
+                  <div className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar min-h-0">
+                    <SortableContext items={todaySections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                      {todaySections.map((section) => (
+                        <DraggableSection
+                          key={section.id}
+                          section={section}
+                          onCreateTask={createTask}
+                          onUpdate={loadUserData}
+                          onLocalUpdate={(timestamp) => lastLocalUpdate.current = timestamp}
+                          editingTaskId={editingTaskId}
+                          onClearEditingTask={() => {
+                            setEditingTaskId(null)
+                            setForceOpenSectionId(null)
+                          }}
+                          forceOpen={forceOpenSectionId === section.id}
+                          activeSessionTaskId={activeSessionTaskId}
+                          onContinueCreating={continueCreatingTask}
+                        />
+                      ))}
+                    </SortableContext>
+                    {todaySections.length === 0 && (
+                      <div className="text-center text-muted-foreground py-12">
+                        <p className="text-body-sm">No sections yet. Create one to get started!</p>
+                      </div>
+                    )}
                   </div>
-                )}
+
+                  {/* Add Section button */}
+                  <Button
+                    onClick={() => createSection('col-today')}
+                    variant="ghost"
+                    className="w-full mt-4 border-2 border-dashed border-muted-foreground/30 hover:border-primary hover:bg-primary text-muted-foreground hover:text-primary-foreground transition-all"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Section
+                  </Button>
+                </div>
+
+                {/* Backlog Half */}
+                <div className="flex flex-col min-h-0">
+                  {/* Backlog Header */}
+                  <div className="flex items-center justify-between pb-6">
+                    <h2 className="text-h3 font-semibold text-foreground">Backlog</h2>
+                  </div>
+
+                  {/* Backlog Content */}
+                  <div className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar min-h-0">
+                    <SortableContext items={backlogSections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                      {backlogSections.map((section) => (
+                        <DraggableSection
+                          key={section.id}
+                          section={section}
+                          onCreateTask={createTask}
+                          onUpdate={loadUserData}
+                          onLocalUpdate={(timestamp) => lastLocalUpdate.current = timestamp}
+                          editingTaskId={editingTaskId}
+                          onClearEditingTask={() => {
+                            setEditingTaskId(null)
+                            setForceOpenSectionId(null)
+                          }}
+                          forceOpen={forceOpenSectionId === section.id}
+                          activeSessionTaskId={activeSessionTaskId}
+                          onContinueCreating={continueCreatingTask}
+                        />
+                      ))}
+                    </SortableContext>
+                    {backlogSections.length === 0 && (
+                      <div className="text-center text-muted-foreground py-12">
+                        <p className="text-body-sm">No sections yet. Create one to get started!</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Add Section button */}
+                  <Button
+                    onClick={() => createSection('col-backlog')}
+                    variant="ghost"
+                    className="w-full mt-4 border-2 border-dashed border-muted-foreground/30 hover:border-primary hover:bg-primary text-muted-foreground hover:text-primary-foreground transition-all"
+                  >
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Section
+                  </Button>
+                </div>
               </div>
-              <Button
-                onClick={() => createSection('col-backlog')}
-                variant="ghost"
-                className="w-full mt-4 border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-primary/5 text-muted-foreground hover:text-foreground transition-all"
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add Section
-              </Button>
-            </section>
-          </div>
+            </>
+          {/* ) : ( */}
+            {/* Priority View: 4 Priority Columns - COMMENTED OUT
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 flex-1 min-h-0">
+              {(['high', 'medium', 'low', 'none'] as const).map((priority) => {
+                const sections = priorityGroups?.[priority] || []
+                const label = priority.charAt(0).toUpperCase() + priority.slice(1)
+                const colors = {
+                  high: 'text-foreground',
+                  medium: 'text-foreground',
+                  low: 'text-foreground',
+                  none: 'text-foreground'
+                }
+                const borderColors = {
+                  high: 'border-l-4 border-l-red-500',
+                  medium: 'border-l-4 border-l-yellow-500',
+                  low: 'border-l-4 border-l-blue-500',
+                  none: 'border-l-4 border-l-muted-foreground'
+                }
+
+                return (
+                  <section key={priority} className={`flex flex-col min-h-0 ${borderColors[priority]}`}>
+                    <div className="pb-6 pl-4">
+                      <h2 className={`text-h3 font-semibold ${colors[priority]}`}>
+                        {label} <span className="text-body-sm text-muted-foreground ml-2">({sections.length})</span>
+                      </h2>
+                    </div>
+                    <div className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar min-h-0">
+                      <SortableContext items={sections.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                        {sections.map((section) => (
+                          <DraggableSection
+                            key={section.id}
+                            section={section}
+                            onCreateTask={createTask}
+                            onUpdate={loadUserData}
+                            onLocalUpdate={(timestamp) => lastLocalUpdate.current = timestamp}
+                            editingTaskId={editingTaskId}
+                            onClearEditingTask={() => {
+                              setEditingTaskId(null)
+                              setForceOpenSectionId(null)
+                            }}
+                            forceOpen={forceOpenSectionId === section.id}
+                            activeSessionTaskId={activeSessionTaskId}
+                          />
+                        ))}
+                      </SortableContext>
+                      {sections.length === 0 && (
+                        <div className="text-center text-muted-foreground py-12 border-2 border-dashed border-border rounded-lg">
+                          <p className="text-body-sm">No {label.toLowerCase()} tasks</p>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )
+              })}
+            </div>
+          */}
+          {/* ) } */}
 
           <DragOverlay>
             {activeSection && (
               <div className="bg-card rounded-xl border border-border shadow-2xl rotate-3 opacity-95 cursor-grabbing w-full max-w-md">
                 <div className="flex items-center justify-between px-4 py-3">
-                  <h3 className="text-lg font-semibold">
+                  <h3 className="text-h5">
                     {activeSection.title || 'Untitled Section'}
                   </h3>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -749,7 +1000,7 @@ export default function DashboardPage() {
                     </svg>
                   )}
                 </div>
-                <p className={`flex-1 text-sm ${activeTask.completed ? 'line-through text-muted-foreground' : ''} ${!activeTask.text ? 'italic text-muted-foreground' : ''}`}>
+                <p className={`flex-1 text-body-sm ${activeTask.completed ? 'line-through text-muted-foreground' : ''} ${!activeTask.text ? 'italic text-muted-foreground' : ''}`}>
                   {activeTask.text || 'Untitled task'}
                 </p>
               </div>
@@ -758,7 +1009,6 @@ export default function DashboardPage() {
         </DndContext>
       </div>
     </main>
-    </AccentColorProvider>
   )
 }
 
@@ -771,6 +1021,7 @@ function DraggableSection({
   onClearEditingTask,
   forceOpen,
   activeSessionTaskId,
+  onContinueCreating,
 }: {
   section: SectionWithTasks
   onCreateTask: (sectionId: string) => Promise<void>
@@ -780,6 +1031,7 @@ function DraggableSection({
   onClearEditingTask: () => void
   forceOpen: boolean
   activeSessionTaskId: string | null
+  onContinueCreating?: (sectionId: string) => Promise<void>
 }) {
   const {
     attributes,
@@ -802,6 +1054,7 @@ function DraggableSection({
         section={section}
         onCreateTask={onCreateTask}
         onUpdate={onUpdate}
+        onContinueCreating={onContinueCreating}
         onLocalUpdate={onLocalUpdate}
         dragHandleListeners={listeners}
         dragHandleAttributes={attributes}
@@ -825,6 +1078,7 @@ function SectionCard({
   onClearEditingTask,
   forceOpen,
   activeSessionTaskId,
+  onContinueCreating,
 }: {
   section: SectionWithTasks
   onCreateTask: (sectionId: string) => Promise<void>
@@ -836,6 +1090,7 @@ function SectionCard({
   onClearEditingTask: () => void
   forceOpen: boolean
   activeSessionTaskId: string | null
+  onContinueCreating?: (sectionId: string) => Promise<void>
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [title, setTitle] = useState(section.title)
@@ -937,9 +1192,9 @@ function SectionCard({
   }
 
   return (
-    <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm hover:border-primary/50 transition-all">
+    <div className="bg-card rounded-xl border border-border overflow-hidden shadow-sm hover:border-primary hover:shadow-md transition-all">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 hover:bg-accent/30 transition-colors">
+      <div className="flex items-center gap-2 px-4 py-3 transition-colors">
         {/* Drag Handle */}
         <div
           {...dragHandleListeners}
@@ -965,13 +1220,13 @@ function SectionCard({
               }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="bg-transparent text-lg font-semibold outline-none flex-1 min-w-0 text-foreground"
+            className="bg-transparent text-h5 outline-none flex-1 min-w-0 text-foreground"
             placeholder="Section name"
             autoFocus
           />
         ) : (
           <h3
-            className="text-lg font-semibold flex-1 min-w-0 text-foreground"
+            className="text-h5 flex-1 min-w-0 text-foreground"
             onDoubleClick={() => setIsEditing(true)}
           >
             {title || 'Untitled Section'}
@@ -985,7 +1240,7 @@ function SectionCard({
               e.stopPropagation()
               deleteSection()
             }}
-            className="h-8 w-8 p-0 flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 relative"
+            className="h-8 w-8 p-0 flex items-center justify-center text-foreground hover:text-destructive-foreground hover:bg-destructive relative"
             aria-label="Delete section"
           >
             <div className="hit-area-extend absolute inset-0 min-h-[44px] min-w-[44px] -m-[18px]" />
@@ -1022,12 +1277,13 @@ function SectionCard({
                 onUpdate={onUpdate}
                 editingTaskId={editingTaskId}
                 onClearEditingTask={onClearEditingTask}
+                onContinueCreating={onContinueCreating}
                 activeSessionTaskId={activeSessionTaskId}
               />
             ))}
           </SortableContext>
           {section.tasks.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">
+            <p className="text-body-sm text-muted-foreground text-center py-4">
               No tasks yet. Add your first task!
             </p>
           )}
@@ -1048,7 +1304,7 @@ function SectionCard({
           <Button
             onClick={clearCompleted}
             variant="ghost"
-            className="w-full text-sm text-muted-foreground hover:text-destructive"
+            className="w-full text-body-sm text-muted-foreground hover:text-destructive"
           >
             Clear Completed ({completedTasks.length})
           </Button>
@@ -1064,6 +1320,7 @@ function DraggableTask({
   onUpdate,
   editingTaskId,
   onClearEditingTask,
+  onContinueCreating,
   activeSessionTaskId,
 }: {
   task: TasksRow
@@ -1071,6 +1328,7 @@ function DraggableTask({
   onUpdate: () => Promise<void>
   editingTaskId: string | null
   onClearEditingTask: () => void
+  onContinueCreating?: (sectionId: string) => Promise<void>
   activeSessionTaskId: string | null
 }) {
   const {
@@ -1097,6 +1355,7 @@ function DraggableTask({
         dragHandleListeners={listeners}
         editingTaskId={editingTaskId}
         onClearEditingTask={onClearEditingTask}
+        onContinueCreating={onContinueCreating}
         activeSessionTaskId={activeSessionTaskId}
       />
     </div>
@@ -1110,6 +1369,7 @@ function TaskCard({
   dragHandleListeners,
   editingTaskId,
   onClearEditingTask,
+  onContinueCreating,
   activeSessionTaskId,
 }: {
   task: TasksRow
@@ -1118,12 +1378,15 @@ function TaskCard({
   dragHandleListeners?: React.HTMLAttributes<HTMLDivElement>
   editingTaskId: string | null
   onClearEditingTask: () => void
+  onContinueCreating?: (sectionId: string) => Promise<void>
   activeSessionTaskId: string | null
 }) {
   const [isEditing, setIsEditing] = useState(false)
   const [text, setText] = useState(task.text)
   const [optimisticCompleted, setOptimisticCompleted] = useState<boolean | null>(null)
+  const [optimisticPriority, setOptimisticPriority] = useState<TaskPriority | null>(null)
   const displayCompleted = optimisticCompleted ?? task.completed
+  const displayPriority = optimisticPriority ?? (task.priority || 'none')
 
   // Auto-start editing if this is the newly created task
   useEffect(() => {
@@ -1131,6 +1394,31 @@ function TaskCard({
       setIsEditing(true)
     }
   }, [editingTaskId, task.id])
+
+  // Click-outside detection for empty tasks
+  useEffect(() => {
+    // Only active when editing an empty task
+    if (!isEditing || text.trim()) return
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // Check if click is outside this task card
+      const card = target.closest('.group') // TaskCard has 'group' class
+      if (!card || card.getAttribute('data-task-id') !== task.id) {
+        // Clicked outside - cancel editing and delete empty task
+        setIsEditing(false)
+        onClearEditingTask()
+        // Delete the empty task
+        const supabase = createClient()
+        supabase.from('tasks').delete().eq('id', task.id).then(() => {
+          onUpdate()
+        })
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isEditing, text, task.id, onUpdate, onClearEditingTask])
 
   const toggleComplete = async () => {
     const newState = !task.completed
@@ -1155,12 +1443,33 @@ function TaskCard({
     }
   }
 
+  const changePriority = async (newPriority: TaskPriority) => {
+    // Update UI immediately
+    setOptimisticPriority(newPriority)
+
+    // Sync with database
+    try {
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('tasks')
+        .update({ priority: newPriority })
+        .eq('id', task.id)
+
+      if (error) throw error
+      await onUpdate() // This will reload and re-sort all tasks
+    } catch {
+      // Revert on error
+      setOptimisticPriority(task.priority || 'none')
+      toast.error('Failed to update priority')
+    }
+  }
+
   const updateText = async (newText: string) => {
     if (!newText.trim()) {
       // Delete task if text is empty
       const supabase = createClient()
       await supabase.from('tasks').delete().eq('id', task.id)
-      toast.success('Task removed')
+      setIsEditing(false)
       onClearEditingTask()
       await onUpdate()
       return
@@ -1181,6 +1490,11 @@ function TaskCard({
     setIsEditing(false)
     onClearEditingTask()
     await onUpdate()
+
+    // Create next empty task for continuous entry
+    if (onContinueCreating) {
+      await onContinueCreating(sectionId)
+    }
   }
 
   const deleteTask = async () => {
@@ -1200,7 +1514,7 @@ function TaskCard({
   }
 
   return (
-    <div className={`bg-card group flex items-center gap-3 rounded-lg border p-3 transition-all hover:border-primary/50 ${displayCompleted ? 'opacity-60' : ''} ${
+    <div data-task-id={task.id} className={`bg-card group flex items-center gap-3 rounded-lg border p-3 transition-all hover:border-primary hover:shadow-sm ${displayCompleted ? 'opacity-60' : ''} ${
       activeSessionTaskId === task.id
         ? 'border-primary shadow-[0_0_20px_rgba(59,130,246,0.3)] animate-pulse'
         : 'border-border'
@@ -1208,7 +1522,7 @@ function TaskCard({
       {/* Drag Handle */}
       <div
         {...dragHandleListeners}
-        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground transition-colors relative"
+        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-primary-foreground hover:bg-primary rounded transition-colors relative"
       >
         <div className="hit-area-extend absolute inset-0 min-h-[44px] min-w-[44px] -m-[19px]" />
         <GripVertical className="h-5 w-5 relative z-10" />
@@ -1241,7 +1555,20 @@ function TaskCard({
           type="text"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          onBlur={() => updateText(text)}
+          onBlur={async () => {
+            if (!text.trim()) {
+              // Empty task: just cancel editing, don't save
+              setIsEditing(false)
+              onClearEditingTask()
+              // Delete the empty task from database
+              const supabase = createClient()
+              await supabase.from('tasks').delete().eq('id', task.id)
+              await onUpdate()
+            } else {
+              // Has text: save as normal
+              await updateText(text)
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               updateText(text)
@@ -1258,12 +1585,20 @@ function TaskCard({
         />
       ) : (
         <p
-          className={`flex-1 text-sm ${displayCompleted ? 'line-through text-muted-foreground' : 'text-foreground'} ${!text ? 'italic text-muted-foreground' : ''}`}
+          className={`flex-1 text-body ${displayCompleted ? 'line-through text-muted-foreground' : 'text-foreground'} ${!text ? 'italic text-muted-foreground' : ''}`}
           onDoubleClick={() => setIsEditing(true)}
         >
           {text || 'Untitled task'}
         </p>
       )}
+
+      {/* Priority Flag */}
+      <PriorityFlag
+        priority={displayPriority}
+        onPriorityChange={changePriority}
+        disabled={displayCompleted}
+        className="ml-3"
+      />
 
       {/* Delete Button */}
       <Button
@@ -1273,11 +1608,10 @@ function TaskCard({
           e.stopPropagation()
           deleteTask()
         }}
-        className="opacity-0 group-hover:opacity-100 transition-opacity h-8 w-8 p-0 flex-shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 relative"
+        className="h-8 w-8 p-0 flex-shrink-0 text-foreground hover:text-destructive-foreground hover:bg-destructive relative"
         aria-label="Delete task"
       >
-        <div className="hit-area-extend absolute inset-0 min-h-[44px] min-w-[44px] -m-[18px]" />
-        <Trash2 className="h-4 w-4 relative z-10" />
+        <Trash2 className="h-4 w-4" />
       </Button>
     </div>
   )

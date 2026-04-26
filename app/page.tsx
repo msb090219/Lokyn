@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Sparkles } from 'lucide-react'
+import { LokynLogo } from '@/components/lokyne-logo'
 
 export default function HomePage() {
   return (
@@ -9,9 +10,9 @@ export default function HomePage() {
           <div className="flex items-center justify-center mb-4">
             <Sparkles className="h-12 w-12 text-primary" />
           </div>
-          <h1 className="text-4xl font-bold text-foreground mb-2">
-            My Dashboard
-          </h1>
+          <div className="flex items-center justify-center mb-2">
+            <LokynLogo className="h-12" />
+          </div>
           <p className="text-muted-foreground">
             Simple tasks & calendar
           </p>
@@ -19,8 +20,8 @@ export default function HomePage() {
 
         <div className="bg-card rounded-lg border border-border p-8 space-y-4">
           <div className="space-y-2">
-            <h2 className="text-xl font-semibold">Welcome!</h2>
-            <p className="text-sm text-muted-foreground">
+            <h2 className="text-h4 font-semibold">Welcome!</h2>
+            <p className="text-body-sm text-muted-foreground">
               Sign in to access your personal dashboard
             </p>
           </div>
@@ -28,7 +29,7 @@ export default function HomePage() {
           <div className="space-y-3">
             <Link
               href="/auth/login"
-              className="block w-full bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-center font-medium transition-colors"
+              className="block w-full bg-primary text-primary-foreground hover:bg-primary rounded-md px-4 py-2 text-center font-medium transition-colors"
             >
               Sign In
             </Link>
@@ -41,7 +42,7 @@ export default function HomePage() {
           </div>
 
           <div className="pt-4 border-t">
-            <p className="text-xs text-muted-foreground text-center">
+            <p className="text-caption text-muted-foreground text-center">
               Built with Next.js, Supabase, and shadcn/ui
             </p>
           </div>
