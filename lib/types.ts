@@ -48,6 +48,7 @@ export interface Database {
           text: string
           completed: boolean
           position: number
+          priority: 'none' | 'low' | 'medium' | 'high'
           created_at: string
           updated_at: string
         }
@@ -58,6 +59,7 @@ export interface Database {
           text: string
           completed?: boolean
           position: number
+          priority?: 'none' | 'low' | 'medium' | 'high'
           created_at?: string
           updated_at?: string
         }
@@ -68,6 +70,7 @@ export interface Database {
           text?: string
           completed?: boolean
           position?: number
+          priority?: 'none' | 'low' | 'medium' | 'high'
           updated_at?: string
         }
       }
@@ -94,6 +97,7 @@ export interface Database {
           title: string
           description: string | null
           event_date: string
+          end_time: string
           duration_minutes: number
           color: string
           all_day: boolean
@@ -109,6 +113,7 @@ export interface Database {
           title: string
           description?: string
           event_date: string
+          end_time?: string
           duration_minutes?: number
           color?: string
           all_day?: boolean
@@ -122,12 +127,38 @@ export interface Database {
           title?: string
           description?: string
           event_date?: string
+          end_time?: string
           duration_minutes?: number
           color?: string
           all_day?: boolean
           import_batch_id?: string | null
           import_file_name?: string | null
           imported_at?: string | null
+          updated_at?: string
+        }
+      }
+      import_groups: {
+        Row: {
+          id: string
+          batch_id: string
+          user_id: string
+          name: string
+          color: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          batch_id: string
+          user_id: string
+          name: string
+          color?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          name?: string
+          color?: string
           updated_at?: string
         }
       }
@@ -195,12 +226,29 @@ export type SectionsRow = Tables['sections']['Row']
 export type TasksRow = Tables['tasks']['Row']
 export type UserPreferencesRow = Tables['user_preferences']['Row']
 export type EventsRow = Tables['events']['Row']
+export type EventsInsert = Tables['events']['Insert']
+export type EventsUpdate = Tables['events']['Update']
+export type ImportGroupsRow = Tables['import_groups']['Row']
+export type ImportGroupsInsert = Tables['import_groups']['Insert']
+export type ImportGroupsUpdate = Tables['import_groups']['Update']
 export type StudySessionsRow = Tables['study_sessions']['Row']
 export type StudySessionsInsert = Tables['study_sessions']['Insert']
 export type StudySessionsUpdate = Tables['study_sessions']['Update']
 export type UserStatsRow = Tables['user_stats']['Row']
 export type UserStatsInsert = Tables['user_stats']['Insert']
 export type UserStatsUpdate = Tables['user_stats']['Update']
+
+// Calendar event types
+export type EventColor = 'blue' | 'red' | 'green' | 'yellow' | 'purple' | 'orange' | 'pink'
+export type EventVariant = 'compact' | 'full' | 'month'
+
+// Event with import group info
+export interface EventWithGroup extends EventsRow {
+  import_group?: {
+    name: string
+    color: string
+  } | null
+}
 
 // Study session types
 export type SessionType = 'study' | 'break'
@@ -231,4 +279,21 @@ export interface ActiveSession {
   task_id: string | null
   title: string
   started_at: string
+  tasks?: Array<{ id: string; task_id: string; completed: boolean; task: { id: string; text: string } }>
+}
+
+// Session tasks junction table
+export interface SessionTask {
+  id: string
+  session_id: string
+  task_id: string
+  completed: boolean
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+// Extended session with tasks
+export interface StudySessionWithTasks extends StudySessionsRow {
+  tasks?: Array<SessionTask & { task: { id: string; text: string } }>
 }
