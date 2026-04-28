@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         .eq('stat_name', 'streak')
         .single()
 
-      result.streak = streakData?.stat_value as StreakData || {
+      result.streak = (streakData as any)?.stat_value as StreakData || {
         current_streak: 0,
         best_streak: 0,
         last_study_date: null,
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
         .eq('stat_name', 'time_metrics')
         .single()
 
-      result.timeMetrics = timeData?.stat_value as TimeMetricsData || {
+      result.timeMetrics = (timeData as any)?.stat_value as TimeMetricsData || {
         today_minutes: 0,
         week_minutes: 0,
         total_minutes: 0,
