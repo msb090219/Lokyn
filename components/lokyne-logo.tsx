@@ -1,34 +1,22 @@
-export function LokynLogo({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      width="120"
-      height="40"
-      viewBox="0 0 120 40"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
+import Image from 'next/image'
+import Link from 'next/link'
+
+export function LokynLogo({ className = "", link = true }: { className?: string; link?: boolean }) {
+  const logo = (
+    <Image
+      src="/logo.png"
+      alt="Lokyn"
+      width={240}
+      height={90}
       className={className}
-    >
-      <text
-        x="0"
-        y="32"
-        fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-        fontSize="28"
-        fontWeight="600"
-        letterSpacing="-0.5"
-        className="fill-foreground"
-      >
-        Lokyn
-      </text>
-      <text
-        x="57"
-        y="32"
-        fontFamily="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
-        fontSize="28"
-        fontWeight="600"
-        className="fill-primary"
-      >
-        .
-      </text>
-    </svg>
+      style={{ width: 'auto', height: '60px' }}
+      priority
+    />
   )
+
+  if (link) {
+    return <Link href="/">{logo}</Link>
+  }
+
+  return logo
 }

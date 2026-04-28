@@ -52,7 +52,7 @@ export function SessionTaskList({
           No tasks selected for this session
         </div>
       ) : (
-        <div className="space-y-2 max-h-48 overflow-y-auto">
+        <div className="space-y-2">
           {tasks.map((sessionTask) => (
             <div
               key={sessionTask.id}

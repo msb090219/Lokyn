@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowLeft, User, Key, Bell, Save, Copy, Check, Shield, Lock, Info, Palette, MessageCircle, RefreshCw, Menu, ChevronDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/theme-toggle'
-import { UserProfileMenu } from '@/components/user-profile-menu'
+import UserProfileMenu from '@/components/user-profile-menu'
 import { SettingsSidebar } from '@/components/settings-sidebar'
 import { SettingsMobileDrawer } from '@/components/settings-mobile-drawer'
 import { toast } from 'sonner'
@@ -305,7 +305,7 @@ export default function SettingsPage() {
       {/* Header */}
       <header className="sticky top-0 z-[100] bg-card border-b">
         <div className="flex items-center justify-between px-8 py-4">
-          {/* Left: Back Button + Title + Mobile Menu */}
+          {/* Left: Back Button + Mobile Menu */}
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.back()}
@@ -314,7 +314,6 @@ export default function SettingsPage() {
               <ArrowLeft className="h-5 w-5" />
               <span className="text-body-sm font-medium">Back</span>
             </button>
-            <span className="text-h5 font-semibold">Settings</span>
             {/* Mobile hamburger menu */}
             <button
               className="md:hidden p-2 rounded-lg hover:bg-accent transition-colors"
@@ -330,16 +329,16 @@ export default function SettingsPage() {
       </header>
 
       {/* Two-column layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar - hidden on mobile */}
-        <aside className="hidden md:block">
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Sidebar - overlay positioned on the left */}
+        <aside className="hidden md:block absolute left-0 top-0 h-full z-10">
           <SettingsSidebar
             activeSection={activeSection}
             onSectionClick={scrollToSection}
           />
         </aside>
 
-        {/* Content area - scrollable */}
+        {/* Content area - scrollable, centered to viewport */}
         <div
           ref={contentAreaRef}
           className="flex-1 overflow-y-auto px-8 py-6 scroll-smooth"
@@ -630,29 +629,31 @@ export default function SettingsPage() {
           </SectionCard>
           </div>
 
-          {/* Save Button */}
-          <div className="flex justify-end sticky bottom-4">
-            <Button
-              onClick={saveSettings}
-              disabled={saving}
-              className="gap-2"
-            >
-              {saving ? (
-                <>
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="h-4 w-4" />
-                  Save Changes
-                </>
-              )}
-            </Button>
-          </div>
           </div> {/* Close max-w-2xl container */}
         </div> {/* Close content area */}
       </div> {/* Close two-column container */}
+
+      {/* Fixed position save button */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <Button
+          onClick={saveSettings}
+          disabled={saving}
+          size="lg"
+          className="shadow-lg hover:shadow-xl transition-shadow gap-2"
+        >
+          {saving ? (
+            <>
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4" />
+              Save Changes
+            </>
+          )}
+        </Button>
+      </div>
 
       {/* Mobile drawer (shown on mobile) */}
       <SettingsMobileDrawer

@@ -1,7 +1,7 @@
-# My Dashboard API Documentation
+# Lokyn API Documentation
 
 ## Overview
-RESTful API for creating and managing tasks in My Dashboard. All endpoints require API key authentication.
+RESTful API for creating and managing tasks in Lokyn. All endpoints require API key authentication.
 
 ## Base URL
 ```

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, memo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Settings, LogOut, Sun, Moon } from 'lucide-react'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { useTheme } from 'next-themes'
+import { SessionManager } from '@/lib/supabase/session-manager'
 
 // Helper to get initials from name
 const getInitials = (name: string) => {
@@ -44,7 +45,7 @@ interface UserProfileMenuProps {
   onSignOut?: () => Promise<void>
 }
 
-export function UserProfileMenu({ user, userProfile, onSignOut }: UserProfileMenuProps) {
+function UserProfileMenu({ user, userProfile, onSignOut }: UserProfileMenuProps) {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
   const [showUserMenu, setShowUserMenu] = useState(false)
@@ -65,21 +66,17 @@ export function UserProfileMenu({ user, userProfile, onSignOut }: UserProfileMen
     }
   }
 
-  // Default sign out handler
-  const defaultSignOut = async () => {
-    const supabase = createClient()
-    await supabase.auth.signOut()
-    router.push('/auth/login')
-    toast.success('Signed out successfully')
-  }
-
   const handleSignOut = async () => {
     setShowUserMenu(false)
-    if (onSignOut) {
-      await onSignOut()
-    } else {
-      await defaultSignOut()
-    }
+
+    // Clear persistent session data
+    SessionManager.clearPersistentSession()
+
+    const supabase = createClient()
+    await supabase.auth.signOut()
+
+    router.push('/auth/login')
+    toast.success('Signed out successfully')
   }
 
   // Toggle menu
@@ -196,13 +193,13 @@ export function UserProfileMenu({ user, userProfile, onSignOut }: UserProfileMen
             </div>
             <button
               onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className={`relative w-11 h-6 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 ${
+              className={`relative w-11 h-6 rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 border border-border/50 shadow-sm ${
                 theme === 'dark' ? 'bg-primary' : 'bg-muted'
               }`}
               aria-label="Toggle theme"
             >
               <span
-                className={`absolute top-0.5 left-0.5 bg-white rounded-full h-5 w-5 shadow-lg transition-transform duration-200 ease-in-out ${
+                className={`absolute top-0.5 left-0.5 bg-white rounded-full h-5 w-5 shadow-md transition-transform duration-200 ease-in-out ${
                   theme === 'dark' ? 'translate-x-5' : 'translate-x-0'
                 }`}
               />
@@ -227,8 +224,7 @@ export function UserProfileMenu({ user, userProfile, onSignOut }: UserProfileMen
             variant="ghost"
             onClick={handleSignOut}
             className="w-full justify-start gap-3 px-4 py-2.5
-                       text-destructive hover:text-destructive
-                       hover:bg-destructive
+                       hover:bg-primary hover:text-primary-foreground
                        transition-colors duration-150"
           >
             <LogOut className="h-4 w-4" />
@@ -239,3 +235,8 @@ export function UserProfileMenu({ user, userProfile, onSignOut }: UserProfileMen
     </>
   )
 }
+
+// Memoize UserProfileMenu to prevent unnecessary re-renders
+export default memo(UserProfileMenu, (prev, next) => {
+  return prev.user?.id === next.user?.id && prev.userProfile === next.userProfile
+})

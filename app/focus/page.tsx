@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Play, Pause, LogOut, Clock, Timer, Flame, Calendar, Trophy } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
-import { AppHeader } from '@/components/app-header'
+import AppHeader from '@/components/app-header'
 import { cn } from '@/lib/utils'
 import { SessionTaskList } from '@/components/session-task-list'
 import { AddTaskModal } from '@/components/add-task-modal'
@@ -750,10 +750,7 @@ export default function FocusPage() {
   }
 
   return (
-    <div className={cn(
-      "min-h-screen bg-background",
-      focusMode && "overflow-hidden"  // Disable scrolling in focus mode
-    )}>
+    <div className="h-screen overflow-hidden bg-background">
       {/* Navigation Header - HIDDEN in focus mode */}
       {!focusMode && (
         <AppHeader
@@ -764,17 +761,14 @@ export default function FocusPage() {
         />
       )}
 
-      <main className={cn(
-        "min-h-screen flex items-center justify-center px-4",
-        focusMode && "min-h-screen"  // Ensure full height in focus mode
-      )}>
+      <main className="h-[calc(100vh-64px)] flex items-center justify-center px-4 overflow-hidden">
         <div className={cn(
-          "w-full transition-all duration-1000 ease-out",
+          "w-full transition-all duration-1000 ease-out flex flex-col",
           focusMode ? "max-w-5xl" : "max-w-md"
         )}>
           {/* Centered Timer Layout */}
           <div className={cn(
-            "transition-all duration-1000 ease-out",
+            "transition-all duration-1000 ease-out flex-1 flex flex-col justify-center",
             focusMode ? "grid md:grid-cols-2 gap-12" : "text-center gap-8"
           )}>
             {/* Timer Type Toggle - Above timer display */}
@@ -868,7 +862,7 @@ export default function FocusPage() {
             {/* Session Task List */}
             <div className={cn(
               "transition-all duration-1000 ease-out",
-              focusMode ? "flex flex-col" : "mt-12"
+              focusMode ? "flex flex-col max-h-[50vh] overflow-y-auto" : "mt-12 max-h-[30vh] overflow-y-auto"
             )}>
               <SessionTaskList
                 tasks={sessionTasks}

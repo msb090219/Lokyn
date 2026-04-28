@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,7 +52,14 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background flex items-center justify-center p-4">
+    <main className="min-h-screen bg-background flex items-center justify-center p-4 relative">
+      <Link
+        href="/"
+        className="absolute top-4 left-4 p-2 hover:bg-muted rounded-md transition-colors"
+        aria-label="Back to home"
+      >
+        <ArrowLeft className="h-5 w-5" />
+      </Link>
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Create Account</CardTitle>

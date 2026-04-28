@@ -1,9 +1,10 @@
 'use client'
 
+import { memo } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle, Calendar, Timer, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { UserProfileMenu } from '@/components/user-profile-menu'
+import UserProfileMenu from '@/components/user-profile-menu'
 import { LokynLogo } from '@/components/lokyne-logo'
 
 interface AppHeaderProps {
@@ -13,7 +14,7 @@ interface AppHeaderProps {
   onNavigationAttempt?: () => Promise<boolean> // Returns true if navigation should be allowed
 }
 
-export function AppHeader({ activePage, user, userProfile, onNavigationAttempt }: AppHeaderProps) {
+function AppHeader({ activePage, user, userProfile, onNavigationAttempt }: AppHeaderProps) {
   const router = useRouter()
 
   const getPageInfo = (page: string) => {
@@ -50,10 +51,7 @@ export function AppHeader({ activePage, user, userProfile, onNavigationAttempt }
     <header className="sticky top-0 z-[100] bg-card border-b">
       <div className="container mx-auto px-8 py-4 flex items-center justify-between">
         {/* Left: Logo */}
-        <div className="flex items-center gap-2">
-          <PageIcon className="h-6 w-6 text-primary" />
-          <LokynLogo className="h-8" />
-        </div>
+        <LokynLogo />
 
         {/* Center: Navigation */}
         <nav className="hidden md:flex items-center gap-1">
@@ -105,3 +103,12 @@ export function AppHeader({ activePage, user, userProfile, onNavigationAttempt }
     </header>
   )
 }
+
+// Memoize AppHeader to prevent unnecessary re-renders
+export default memo(AppHeader, (prev, next) => {
+  return (
+    prev.activePage === next.activePage &&
+    prev.user?.id === next.user?.id &&
+    prev.userProfile === next.userProfile
+  )
+})

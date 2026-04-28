@@ -1,27 +1,32 @@
 'use client'
 
-import React, { useEffect, useState, useRef, useCallback } from 'react'
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, ChevronDown, ChevronRight, Trash2, GripVertical, CheckCircle, Calendar, Timer, BarChart3, Flag } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { UserProfileMenu } from '@/components/user-profile-menu'
+import UserProfileMenu from '@/components/user-profile-menu'
+import { LokynLogo } from '@/components/lokyne-logo'
 import { toast } from 'sonner'
 import type { SectionsRow, TasksRow } from '@/lib/types'
 import { cn } from '@/lib/utils'
+import { SessionManager } from '@/lib/supabase/session-manager'
 import {
   DndContext,
   DragEndEvent,
   DragOverlay,
   DragStartEvent,
   closestCenter,
+  closestCorners,
   pointerWithin,
   PointerSensor,
   useSensor,
   useSensors,
   useDroppable,
+  CollisionDetection,
+  Collision,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -174,6 +179,23 @@ function PriorityFlag({
   )
 }
 
+// Simple Droppable Zone for Columns
+function DroppableColumnZone({
+  id,
+  children,
+}: {
+  id: 'col-today' | 'col-backlog'
+  children: React.ReactNode
+}) {
+  const { setNodeRef } = useDroppable({ id })
+
+  return (
+    <div ref={setNodeRef} className="flex-1 min-h-[200px]">
+      {children}
+    </div>
+  )
+}
+
 // Droppable Column Component
 function DroppableColumn({
   id,
@@ -245,6 +267,55 @@ function groupSectionsByPriority(sections: SectionWithTasks[]): Record<'high' | 
 }
 */
 
+// Custom collision detection that handles section dragging better with expanded sections
+const customCollisionDetection: CollisionDetection = args => {
+  const { active, droppableContainers, pointerCoordinates } = args
+
+  // Check if we're dragging a section
+  const isDraggingSection = droppableContainers.some(
+    container => container.id === active.id
+  )
+
+  if (isDraggingSection && pointerCoordinates) {
+    // For section dragging, filter out column containers
+    const sectionContainers = droppableContainers.filter(
+      container => container.id !== 'col-today' && container.id !== 'col-backlog'
+    )
+
+    // Find closest section based on pointer position
+    const collisions: Collision[] = []
+
+    for (const container of sectionContainers) {
+      const rect = container.rect.current
+      if (!rect) continue
+
+      // Check if pointer is within horizontal bounds
+      const isWithinHorizontalBounds =
+        pointerCoordinates.x >= rect.left &&
+        pointerCoordinates.x <= rect.right
+
+      if (isWithinHorizontalBounds) {
+        // Calculate vertical distance from pointer to section center
+        const verticalDistance = Math.abs(pointerCoordinates.y - (rect.top + rect.height / 2))
+
+        collisions.push({
+          id: container.id,
+          data: { container, value: verticalDistance }
+        })
+      }
+    }
+
+    // Return closest section
+    if (collisions.length > 0) {
+      collisions.sort((a, b) => (a.data?.value || 0) - (b.data?.value || 0))
+      return collisions
+    }
+  }
+
+  // Fall back to closestCorners for task dragging
+  return closestCorners(args)
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
@@ -257,7 +328,37 @@ export default function DashboardPage() {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null)
   const [forceOpenSectionId, setForceOpenSectionId] = useState<string | null>(null)
   const [activeSessionTaskId, setActiveSessionTaskId] = useState<string | null>(null)
+  const [isDraggingSection, setIsDraggingSection] = useState(false)
   const lastLocalUpdate = useRef<number>(0)
+
+  // Memoize sorted sections to prevent unnecessary re-renders
+  const sortedTodaySections = useMemo(() =>
+    todaySections.map(s => ({
+      ...s,
+      tasks: sortTasks(s.tasks)
+    })),
+    [todaySections]
+  )
+
+  const sortedBacklogSections = useMemo(() =>
+    backlogSections.map(s => ({
+      ...s,
+      tasks: sortTasks(s.tasks)
+    })),
+    [backlogSections]
+  )
+
+  // Create a Map for O(1) task/section lookups during drag operations
+  const dragItemsMap = useMemo(() => {
+    const map = new Map<string, SectionWithTasks | TasksRow>()
+    ;[...todaySections, ...backlogSections].forEach(section => {
+      map.set(section.id, section)
+      section.tasks.forEach(task => {
+        map.set(task.id, { ...task, _sectionId: section.id } as any)
+      })
+    })
+    return map
+  }, [todaySections, backlogSections])
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -269,6 +370,18 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadUserData()
+
+    // Cleanup function to remove Supabase channels
+    return () => {
+      const channelsRef = (window as any).__dashboardChannels
+      if (channelsRef?.current) {
+        const supabase = createClient()
+        channelsRef.current.forEach((channel: any) => {
+          supabase.removeChannel(channel)
+        })
+        delete (window as any).__dashboardChannels
+      }
+    }
   }, [])
 
   // Load active session
@@ -302,11 +415,50 @@ export default function DashboardPage() {
 
       // Get user session
       const { data: { session } } = await supabase.auth.getSession()
+
       if (!session) {
+        // Check if user has a persistent session that should be restored
+        if (SessionManager.shouldPersistSession()) {
+          if (SessionManager.isSessionValid()) {
+            // Session should persist but isn't found - try to refresh
+            const refreshed = await SessionManager.refreshSession()
+            if (refreshed) {
+              setUser(refreshed.user)
+              // Continue loading with refreshed session
+            } else {
+              router.push('/auth/login')
+              return
+            }
+          } else {
+            // Persistent session has expired
+            router.push('/auth/login')
+            return
+          }
+        } else {
+          // No persistent session, redirect to login
+          router.push('/auth/login')
+          return
+        }
+      } else {
+        // Session exists, check if it needs refresh for persistent sessions
+        if (SessionManager.shouldPersistSession() && !SessionManager.isSessionValid()) {
+          // Session is persistent but expired, try to refresh
+          const refreshed = await SessionManager.refreshSession()
+          if (!refreshed) {
+            router.push('/auth/login')
+            return
+          }
+          setUser(refreshed.user)
+        } else {
+          setUser(session.user)
+        }
+      }
+
+      const currentUser = user || session?.user
+      if (!currentUser) {
         router.push('/auth/login')
         return
       }
-      setUser(session.user)
 
       // Load sections with tasks in parallel with profile
       const [sectionsResult, profileResult] = await Promise.all([
@@ -316,12 +468,12 @@ export default function DashboardPage() {
             *,
             tasks (*)
           `)
-          .eq('user_id', session.user.id)
+          .eq('user_id', currentUser.id)
           .order('position', { ascending: true }),
         supabase
           .from('user_preferences')
           .select('*')
-          .eq('user_id', session.user.id)
+          .eq('user_id', currentUser.id)
           .single()
       ])
 
@@ -334,7 +486,7 @@ export default function DashboardPage() {
 
       if (error) throw error
 
-      // Separate by column and sort tasks within each section
+      // Separate by column and sort tasks: incomplete first, completed at bottom
       const today = sections?.filter(s => s.column_id === 'col-today') || []
       const backlog = sections?.filter(s => s.column_id === 'col-backlog') || []
 
@@ -365,8 +517,29 @@ export default function DashboardPage() {
           (payload) => {
             // Ignore updates within 1 second of local changes (prevents self-triggered reloads)
             if (Date.now() - lastLocalUpdate.current < 1000) return
-            console.log('Section changed:', payload)
-            loadUserData() // Reload data on changes
+
+            // Incremental updates instead of full reload
+            const { eventType, new: newRecord, old: oldRecord } = payload
+
+            if (eventType === 'INSERT') {
+              const section = newRecord as SectionsRow
+              if (section.column_id === 'col-today') {
+                setTodaySections(prev => [...prev, { ...section, tasks: [] }])
+              } else {
+                setBacklogSections(prev => [...prev, { ...section, tasks: [] }])
+              }
+            } else if (eventType === 'UPDATE') {
+              const section = newRecord as SectionsRow
+              if (section.column_id === 'col-today') {
+                setTodaySections(prev => prev.map(s => s.id === section.id ? { ...s, ...section } : s))
+              } else {
+                setBacklogSections(prev => prev.map(s => s.id === section.id ? { ...s, ...section } : s))
+              }
+            } else if (eventType === 'DELETE') {
+              const section = oldRecord as SectionsRow
+              setTodaySections(prev => prev.filter(s => s.id !== section.id))
+              setBacklogSections(prev => prev.filter(s => s.id !== section.id))
+            }
           }
         )
         .on(
@@ -380,14 +553,50 @@ export default function DashboardPage() {
           (payload) => {
             // Ignore updates within 1 second of local changes (prevents self-triggered reloads)
             if (Date.now() - lastLocalUpdate.current < 1000) return
-            console.log('Task changed:', payload)
-            loadUserData() // Reload data on changes
+
+            // Incremental updates instead of full reload
+            const { eventType, new: newRecord, old: oldRecord } = payload
+            const task = (newRecord || oldRecord) as TasksRow | null
+
+            if (!task) return
+
+            if (eventType === 'INSERT') {
+              // Add task to its section
+              const sectionId = task.section_id
+              setTodaySections(prev => prev.map(s =>
+                s.id === sectionId ? { ...s, tasks: [...s.tasks, task] } : s
+              ))
+              setBacklogSections(prev => prev.map(s =>
+                s.id === sectionId ? { ...s, tasks: [...s.tasks, task] } : s
+              ))
+            } else if (eventType === 'UPDATE') {
+              // Update task in its section
+              setTodaySections(prev => prev.map(s => ({
+                ...s,
+                tasks: s.tasks.map(t => t.id === task.id ? { ...t, ...task } : t)
+              })))
+              setBacklogSections(prev => prev.map(s => ({
+                ...s,
+                tasks: s.tasks.map(t => t.id === task.id ? { ...t, ...task } : t)
+              })))
+            } else if (eventType === 'DELETE') {
+              // Remove task from its section
+              setTodaySections(prev => prev.map(s => ({
+                ...s,
+                tasks: s.tasks.filter(t => t.id !== task.id)
+              })))
+              setBacklogSections(prev => prev.map(s => ({
+                ...s,
+                tasks: s.tasks.filter(t => t.id !== task.id)
+              })))
+            }
           }
         )
         .subscribe()
 
-      // Store channel for cleanup (would need ref for proper cleanup)
-      ;(window as any).__dashboardChannel = channel
+      // Store channel in ref for cleanup
+      const channelsRef = { current: [channel] }
+      ;(window as any).__dashboardChannels = channelsRef
     } catch (error: any) {
       console.error('Error loading data:', JSON.stringify(error, null, 2))
       console.error('Error message:', error?.message || 'No message')
@@ -492,20 +701,18 @@ export default function DashboardPage() {
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event
-    const allSections = [...todaySections, ...backlogSections]
-    const allTasks = allSections.flatMap(s => s.tasks)
+    const draggedItem = dragItemsMap.get(active.id as string)
 
-    // Check if it's a section
-    const section = allSections.find(s => s.id === active.id)
-    if (section) {
-      setActiveSection(section)
-      return
-    }
+    if (!draggedItem) return
 
-    // Check if it's a task
-    const task = allTasks.find(t => t.id === active.id)
-    if (task) {
-      setActiveTask(task)
+    // Check if it's a section (has title property)
+    if ('title' in draggedItem && 'column_id' in draggedItem) {
+      setActiveSection(draggedItem as SectionWithTasks)
+      setIsDraggingSection(true)
+    } else {
+      // It's a task
+      setActiveTask(draggedItem as TasksRow)
+      setIsDraggingSection(false)
     }
   }
 
@@ -513,6 +720,7 @@ export default function DashboardPage() {
     const { active, over } = event
     setActiveSection(null)
     setActiveTask(null)
+    setIsDraggingSection(false)
 
     if (!over || active.id === over.id) return
 
@@ -614,20 +822,34 @@ export default function DashboardPage() {
       return
     }
 
-    // Task dragging - find the task and which section it's in
-    let activeTask: TasksRow | null = null
-    let sourceSection: SectionWithTasks | null = null
+    // Task dragging - use Map for O(1) lookups instead of O(n) loop
+    const activeTask = dragItemsMap.get(activeId) as TasksRow | undefined
+    const activeTaskSectionId = (activeTask as any)?._sectionId
+
+    // Find source and target sections using the map
+    const sourceSection = activeTaskSectionId
+      ? (dragItemsMap.get(activeTaskSectionId) as SectionWithTasks)
+      : null
+
+    // Find target section - check if overId is a section or task
+    const overItem = dragItemsMap.get(overId)
     let targetSection: SectionWithTasks | null = null
 
-    for (const section of [...todaySections, ...backlogSections]) {
-      const task = section.tasks.find(t => t.id === activeId)
-      if (task) {
-        activeTask = task
-        sourceSection = section
+    if (overItem) {
+      // If overItem is a section, use it
+      if ('column_id' in overItem) {
+        targetSection = overItem as SectionWithTasks
+      } else {
+        // If overItem is a task, get its section
+        const overTaskSectionId = (overItem as any)._sectionId
+        targetSection = overTaskSectionId
+          ? (dragItemsMap.get(overTaskSectionId) as SectionWithTasks)
+          : null
       }
-      if (section.id === overId || section.tasks.some(t => t.id === overId)) {
-        targetSection = section
-      }
+    } else if (overId === 'col-today' || overId === 'col-backlog') {
+      // Dropping on empty column - use first section or null
+      const sectionsInColumn = overId === 'col-today' ? todaySections : backlogSections
+      targetSection = sectionsInColumn[0] || null
     }
 
     if (!activeTask || !targetSection) return
@@ -744,10 +966,7 @@ export default function DashboardPage() {
       <header className="sticky top-0 z-[100] bg-card border-b">
         <div className="container mx-auto px-8 py-4 flex items-center justify-between">
           {/* Left: Logo */}
-          <div className="flex items-center gap-2">
-            <CheckCircle className="h-6 w-6 text-primary" />
-            <h1 className="text-h6">Lokyn</h1>
-          </div>
+          <LokynLogo className="h-8" />
 
           {/* Center: Navigation */}
           <nav className="hidden md:flex items-center gap-1">
@@ -815,49 +1034,54 @@ export default function DashboardPage() {
 
         <DndContext
           sensors={sensors}
-          collisionDetection={pointerWithin}
+          collisionDetection={customCollisionDetection}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
           {/* Always show normal view - priority view commented out */}
           {/* {viewMode === 'normal' ? ( */}
-            <>
-              {/* Content Grid - Simple 2-column layout (50/50) */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
-                {/* Frontlog Half */}
-                <div className="flex flex-col min-h-0">
-                  {/* Frontlog Header */}
-                  <div className="flex items-center justify-between pb-6">
-                    <h2 className="text-h3 font-semibold text-foreground">Frontlog</h2>
-                  </div>
+            {/* Content Grid - Simple 2-column layout (50/50) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-0">
+              {/* Frontlog Half */}
+              <div className="flex flex-col min-h-0">
+                {/* Frontlog Header */}
+                <div className="flex items-center justify-between pb-6">
+                  <h2 className="text-h3 font-semibold text-foreground">Frontlog</h2>
+                </div>
 
-                  {/* Frontlog Content */}
-                  <div className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar min-h-0">
-                    <SortableContext items={todaySections.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                      {todaySections.map((section) => (
-                        <DraggableSection
-                          key={section.id}
-                          section={section}
-                          onCreateTask={createTask}
-                          onUpdate={loadUserData}
-                          onLocalUpdate={(timestamp) => lastLocalUpdate.current = timestamp}
-                          editingTaskId={editingTaskId}
-                          onClearEditingTask={() => {
-                            setEditingTaskId(null)
-                            setForceOpenSectionId(null)
-                          }}
-                          forceOpen={forceOpenSectionId === section.id}
-                          activeSessionTaskId={activeSessionTaskId}
-                          onContinueCreating={continueCreatingTask}
-                        />
-                      ))}
-                    </SortableContext>
-                    {todaySections.length === 0 && (
+                {/* Frontlog Content */}
+                <DroppableColumnZone id="col-today">
+                  <SortableContext
+                    items={sortedTodaySections.map(s => s.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="overflow-y-auto space-y-4 pr-2 no-scrollbar">
+                    {sortedTodaySections.map((section) => (
+                      <DraggableSection
+                        key={section.id}
+                        section={section}
+                        onCreateTask={createTask}
+                        onUpdate={loadUserData}
+                        onLocalUpdate={(timestamp) => lastLocalUpdate.current = timestamp}
+                        editingTaskId={editingTaskId}
+                        onClearEditingTask={() => {
+                          setEditingTaskId(null)
+                          setForceOpenSectionId(null)
+                        }}
+                        forceOpen={forceOpenSectionId === section.id}
+                        activeSessionTaskId={activeSessionTaskId}
+                        onContinueCreating={continueCreatingTask}
+                        collapsed={forceOpenSectionId !== section.id && section.collapsed}
+                      />
+                    ))}
+                    {sortedTodaySections.length === 0 && (
                       <div className="text-center text-muted-foreground py-12">
                         <p className="text-body-sm">No sections yet. Create one to get started!</p>
                       </div>
                     )}
-                  </div>
+                    </div>
+                  </SortableContext>
+                  </DroppableColumnZone>
 
                   {/* Add Section button */}
                   <Button
@@ -878,32 +1102,38 @@ export default function DashboardPage() {
                   </div>
 
                   {/* Backlog Content */}
-                  <div className="flex-1 overflow-y-auto space-y-4 pr-2 no-scrollbar min-h-0">
-                    <SortableContext items={backlogSections.map(s => s.id)} strategy={verticalListSortingStrategy}>
-                      {backlogSections.map((section) => (
-                        <DraggableSection
-                          key={section.id}
-                          section={section}
-                          onCreateTask={createTask}
-                          onUpdate={loadUserData}
-                          onLocalUpdate={(timestamp) => lastLocalUpdate.current = timestamp}
-                          editingTaskId={editingTaskId}
-                          onClearEditingTask={() => {
-                            setEditingTaskId(null)
-                            setForceOpenSectionId(null)
-                          }}
-                          forceOpen={forceOpenSectionId === section.id}
-                          activeSessionTaskId={activeSessionTaskId}
-                          onContinueCreating={continueCreatingTask}
-                        />
-                      ))}
-                    </SortableContext>
-                    {backlogSections.length === 0 && (
+                  <DroppableColumnZone id="col-backlog">
+                    <SortableContext
+                      items={sortedBacklogSections.map(s => s.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="overflow-y-auto space-y-4 pr-2 no-scrollbar">
+                    {sortedBacklogSections.map((section) => (
+                      <DraggableSection
+                        key={section.id}
+                        section={section}
+                        onCreateTask={createTask}
+                        onUpdate={loadUserData}
+                        onLocalUpdate={(timestamp) => lastLocalUpdate.current = timestamp}
+                        editingTaskId={editingTaskId}
+                        onClearEditingTask={() => {
+                          setEditingTaskId(null)
+                          setForceOpenSectionId(null)
+                        }}
+                        forceOpen={forceOpenSectionId === section.id}
+                        activeSessionTaskId={activeSessionTaskId}
+                        onContinueCreating={continueCreatingTask}
+                        collapsed={forceOpenSectionId !== section.id && section.collapsed}
+                      />
+                    ))}
+                    {sortedBacklogSections.length === 0 && (
                       <div className="text-center text-muted-foreground py-12">
                         <p className="text-body-sm">No sections yet. Create one to get started!</p>
                       </div>
                     )}
-                  </div>
+                    </div>
+                  </SortableContext>
+                  </DroppableColumnZone>
 
                   {/* Add Section button */}
                   <Button
@@ -916,8 +1146,7 @@ export default function DashboardPage() {
                   </Button>
                 </div>
               </div>
-            </>
-          {/* ) : ( */}
+            {/* ) : ( */}
             {/* Priority View: 4 Priority Columns - COMMENTED OUT
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 flex-1 min-h-0">
               {(['high', 'medium', 'low', 'none'] as const).map((priority) => {
@@ -959,6 +1188,7 @@ export default function DashboardPage() {
                             }}
                             forceOpen={forceOpenSectionId === section.id}
                             activeSessionTaskId={activeSessionTaskId}
+                            collapsed={forceOpenSectionId !== section.id && section.collapsed}
                           />
                         ))}
                       </SortableContext>
@@ -974,6 +1204,7 @@ export default function DashboardPage() {
             </div>
           */}
           {/* ) } */}
+          <>
 
           <DragOverlay>
             {activeSection && (
@@ -1006,6 +1237,7 @@ export default function DashboardPage() {
               </div>
             )}
           </DragOverlay>
+          </>
         </DndContext>
       </div>
     </main>
@@ -1022,6 +1254,7 @@ function DraggableSection({
   forceOpen,
   activeSessionTaskId,
   onContinueCreating,
+  collapsed,
 }: {
   section: SectionWithTasks
   onCreateTask: (sectionId: string) => Promise<void>
@@ -1032,6 +1265,7 @@ function DraggableSection({
   forceOpen: boolean
   activeSessionTaskId: string | null
   onContinueCreating?: (sectionId: string) => Promise<void>
+  collapsed: boolean
 }) {
   const {
     attributes,
@@ -1046,6 +1280,7 @@ function DraggableSection({
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0 : 1,
+    minHeight: isDragging && collapsed ? '200px' : undefined,
   }
 
   return (
@@ -1067,7 +1302,7 @@ function DraggableSection({
   )
 }
 
-function SectionCard({
+const SectionCard = React.memo(function SectionCard({
   section,
   onCreateTask,
   onUpdate,
@@ -1097,7 +1332,6 @@ function SectionCard({
   const [collapsed, setCollapsed] = useState(section.collapsed)
   const [optimisticCollapsed, setOptimisticCollapsed] = useState<boolean | null>(null)
   const displayCollapsed = forceOpen ? false : (optimisticCollapsed ?? collapsed)
-  const { setNodeRef: setDroppableRef } = useDroppable({ id: section.id })
 
   // Sync local collapsed state with prop
   useEffect(() => {
@@ -1264,7 +1498,7 @@ function SectionCard({
 
       {/* Tasks */}
       {!displayCollapsed && (
-        <div ref={setDroppableRef} className="p-4 space-y-3">
+        <div className="p-4 space-y-3">
           <SortableContext
             items={section.tasks.map(t => t.id)}
             strategy={verticalListSortingStrategy}
@@ -1312,7 +1546,7 @@ function SectionCard({
       </div>
     </div>
   )
-}
+})  // Close React.memo
 
 function DraggableTask({
   task,
@@ -1362,7 +1596,7 @@ function DraggableTask({
   )
 }
 
-function TaskCard({
+const TaskCard = React.memo(function TaskCard({
   task,
   sectionId,
   onUpdate,
@@ -1522,7 +1756,7 @@ function TaskCard({
       {/* Drag Handle */}
       <div
         {...dragHandleListeners}
-        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-primary-foreground hover:bg-primary rounded transition-colors relative"
+        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground rounded transition-colors relative"
       >
         <div className="hit-area-extend absolute inset-0 min-h-[44px] min-w-[44px] -m-[19px]" />
         <GripVertical className="h-5 w-5 relative z-10" />
@@ -1615,4 +1849,4 @@ function TaskCard({
       </Button>
     </div>
   )
-}
+})  // Close React.memo

@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { CheckCircle, Calendar as CalendarIcon, Plus, Trash2, X, ChevronLeft, ChevronRight, Download, Upload, FileText, ChevronDown, Timer, BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { UserProfileMenu } from '@/components/user-profile-menu'
+import UserProfileMenu from '@/components/user-profile-menu'
+import { LokynLogo } from '@/components/lokyne-logo'
 import { toast } from 'sonner'
 import type { EventsRow, EventColor } from '@/lib/types'
 import { EventCard } from '@/components/calendar/event-card'
@@ -67,7 +68,7 @@ function getSortedEventsForDate(events: EventsRow[], date: Date) {
 // DAY VIEW COMPONENT (Mobile - List View)
 // ============================================================
 
-function DayView({
+const DayView = memo(function DayView({
   events,
   date,
   importGroupNames,
@@ -119,13 +120,13 @@ function DayView({
       )}
     </div>
   )
-}
+})
 
 // ============================================================
 // WEEK VIEW COMPONENT (2x4 GRID)
 // ============================================================
 
-function WeekView({
+const WeekView = memo(function WeekView({
   events,
   currentCalendarDate,
   importGroupNames,
@@ -138,9 +139,9 @@ function WeekView({
   onDateClick: (date: Date) => void
   onEventClick: (event: EventsRow) => void
 }) {
-  // Get week dates (start from Monday)
-  const getWeekDates = (date: Date) => {
-    const start = new Date(date)
+  // Memoize week dates calculation
+  const weekDates = useMemo(() => {
+    const start = new Date(currentCalendarDate)
     const day = start.getDay()
     const diff = start.getDate() - day + (day === 0 ? -6 : 1)
     start.setDate(diff)
@@ -152,9 +153,8 @@ function WeekView({
       week.push(d)
     }
     return week
-  }
+  }, [currentCalendarDate])
 
-  const weekDates = getWeekDates(currentCalendarDate)
   const today = new Date()
 
   return (
@@ -206,13 +206,13 @@ function WeekView({
       </div>
     </div>
   )
-}
+})
 
 // ============================================================
 // MONTH VIEW COMPONENT (Custom implementation)
 // ============================================================
 
-function MonthView({
+const MonthView = memo(function MonthView({
   events,
   currentCalendarDate,
   importGroupNames,
@@ -225,10 +225,10 @@ function MonthView({
   onDateClick: (date: Date) => void
   onEventClick: (event: EventsRow) => void
 }) {
-  // Get all dates in the month
-  const getMonthDates = (date: Date) => {
-    const year = date.getFullYear()
-    const month = date.getMonth()
+  // Memoize month dates calculation
+  const monthDates = useMemo(() => {
+    const year = currentCalendarDate.getFullYear()
+    const month = currentCalendarDate.getMonth()
 
     // First day of the month
     const firstDay = new Date(year, month, 1)
@@ -247,9 +247,8 @@ function MonthView({
     }
 
     return dates
-  }
+  }, [currentCalendarDate])
 
-  const monthDates = getMonthDates(currentCalendarDate)
   const today = new Date()
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -323,7 +322,7 @@ function MonthView({
       </div>
     </div>
   )
-}
+})
 
 // ============================================================
 // MAIN CALENDAR PAGE
@@ -463,9 +462,9 @@ export default function CalendarPage() {
         )
         .subscribe()
 
-      // Store channels for cleanup
-      ;(window as any).__calendarChannel = channel
-      ;(window as any).__importGroupsChannel = groupsChannel
+      // Store channels in ref for cleanup
+      const channelsRef = { current: [channel, groupsChannel] }
+      ;(window as any).__calendarChannels = channelsRef
     } catch (error: any) {
       console.error('Error loading data:', JSON.stringify(error, null, 2))
       console.error('Error message:', error?.message || 'No message')
@@ -479,6 +478,18 @@ export default function CalendarPage() {
 
   useEffect(() => {
     loadUserData()
+
+    // Cleanup function to remove Supabase channels
+    return () => {
+      const channelsRef = (window as any).__calendarChannels
+      if (channelsRef?.current) {
+        const supabase = createClient()
+        channelsRef.current.forEach((channel: any) => {
+          supabase.removeChannel(channel)
+        })
+        delete (window as any).__calendarChannels
+      }
+    }
   }, [loadUserData])
 
   // Close dropdown when clicking outside
@@ -1145,10 +1156,7 @@ END:VEVENT
       <header className="sticky top-0 z-[100] bg-card border-b">
         <div className="container mx-auto px-8 py-4 flex items-center justify-between">
           {/* Left: Logo */}
-          <div className="flex items-center gap-2">
-            <CalendarIcon className="h-6 w-6 text-primary" />
-            <h1 className="text-xl font-bold">Lokyn</h1>
-          </div>
+          <LokynLogo className="h-8" />
 
           {/* Center: Navigation */}
           <nav className="hidden md:flex items-center gap-1">

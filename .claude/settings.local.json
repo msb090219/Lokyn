@@ -35,7 +35,9 @@
       "Bash(npx tsc:*)",
       "Bash(npx tailwindcss --help:*)",
       "Bash(taskkill:*)",
-      "Bash(npm run dev:turbo:*)"
+      "Bash(npm run dev:turbo:*)",
+      "Bash(git checkout:*)",
+      "Bash(npx next build:*)"
     ]
   }
 }

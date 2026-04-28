@@ -1,9 +1,14 @@
 import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
+
+  // Create Supabase client with localStorage support
+  // Note: Middleware runs on the server, so we can't access localStorage directly
+  // But we configure cookies to work with our client-side localStorage setup
   const supabase = createMiddlewareClient({ req, res })
 
   const {
@@ -15,10 +20,8 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/auth/login', req.url))
   }
 
-  // Redirect to dashboard if accessing auth pages with session
-  if (session && req.nextUrl.pathname.startsWith('/auth')) {
-    return NextResponse.redirect(new URL('/dashboard', req.url))
-  }
+  // Note: Authenticated users can now access auth pages for account switching
+  // Previously redirected authenticated users away from /auth routes
 
   return res
 }

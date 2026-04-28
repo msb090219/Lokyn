@@ -12,7 +12,7 @@ const roboto = Roboto({
 })
 
 export const metadata: Metadata = {
-  title: 'My Dashboard',
+  title: 'Lokyn',
   description: 'Simple tasks & calendar',
 }
 

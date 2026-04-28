@@ -5,7 +5,7 @@ import type { StudySessionsInsert, StudySessionsUpdate } from '@/lib/types'
 // GET - Fetch study sessions for the authenticated user
 export async function GET(request: NextRequest) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
 // POST - Create a new study session
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createServerClient()
+    const supabase = await createServerClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
 
     if (authError || !user) {
