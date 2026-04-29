@@ -1,19 +1,19 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase credentials')
-}
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
-
 // Verify NullClaw API key from request
 async function verifyNullClawKey(request: NextRequest): Promise<boolean> {
   const apiKey = request.headers.get('x-nullclaw-api-key')
   if (!apiKey) return false
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return false
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
   // Check if this API key exists in any user's profile
   const { data } = await supabase

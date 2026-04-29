@@ -1,19 +1,24 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+function getSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing Supabase credentials')
+  if (!supabaseUrl || !supabaseServiceKey) {
+    return null
+  }
+
+  return createClient(supabaseUrl, supabaseServiceKey)
 }
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 // Verify NullClaw API key and get user ID
 async function getUserFromApiKey(request: NextRequest): Promise<string | null> {
   const apiKey = request.headers.get('x-nullclaw-api-key')
   if (!apiKey) return null
+
+  const supabase = getSupabaseClient()
+  if (!supabase) return null
 
   const { data } = await supabase
     .from('user_preferences')
@@ -29,6 +34,11 @@ export async function GET(request: NextRequest) {
   const userId = await getUserFromApiKey(request)
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
   }
 
   try {
@@ -82,6 +92,11 @@ export async function POST(request: NextRequest) {
   const userId = await getUserFromApiKey(request)
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return NextResponse.json({ error: 'Server configuration error' }, { status: 500 })
   }
 
   try {

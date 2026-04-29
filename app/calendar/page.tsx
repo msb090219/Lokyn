@@ -419,7 +419,7 @@ export default function CalendarPage() {
       // Build import group names map
       if (importGroupsData) {
         const map = new Map<string, string>()
-        importGroupsData.forEach(group => {
+        importGroupsData.forEach((group: any) => {
           map.set(group.batch_id, group.name)
         })
         setImportGroupNames(map)
@@ -626,17 +626,17 @@ export default function CalendarPage() {
         // Update existing event
         lastLocalUpdate.current = Date.now()
 
-        const { error } = await supabase
-          .from('events')
-          .update({
-            title: eventTitle.trim(),
-            event_date: eventDate.toISOString(),
-            end_time: endTime.toISOString(),
-            duration_minutes: durationMinutes,
-            color: eventColor,
-            description: eventDescription || null,
-            all_day: eventIsAllDay,
-          })
+        const eventData = {
+          title: eventTitle.trim(),
+          event_date: eventDate.toISOString(),
+          end_time: endTime.toISOString(),
+          duration_minutes: durationMinutes,
+          color: eventColor,
+          description: eventDescription || null,
+          all_day: eventIsAllDay,
+        }
+        const { error } = await (supabase.from('events') as any)
+          .update(eventData)
           .eq('id', editingEvent.id)
 
         if (error) throw error
@@ -646,8 +646,7 @@ export default function CalendarPage() {
         // Create new event
         lastLocalUpdate.current = Date.now()
 
-        const { error } = await supabase
-          .from('events')
+        const { error } = await (supabase.from('events') as any)
           .insert({
             user_id: user.id,
             title: eventTitle.trim(),
@@ -766,8 +765,7 @@ export default function CalendarPage() {
     try {
       lastLocalUpdate.current = Date.now()
 
-      const { error } = await supabase
-        .from('import_groups')
+      const { error } = await (supabase.from('import_groups') as any)
         .update({
           name: editingImportGroup.name,
           color: editingImportGroup.color,

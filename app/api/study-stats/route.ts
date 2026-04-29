@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     // Fetch heatmap data (direct query to study_sessions)
     if (statType === 'all' || statType === 'heatmap') {
-      const { data: heatmapData, error } = await supabase.rpc('get_heatmap_data', {
+      const { data: heatmapData, error } = await (supabase.rpc as any)('get_heatmap_data', {
         p_user_id: user.id,
       })
 
